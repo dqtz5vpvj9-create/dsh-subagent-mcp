@@ -1,0 +1,7 @@
+node_modules/
+validation-*.json
+validation-*.jsonl
+validation-*.txt
+dsh.patch.yml
+dsh-subagent-mcp.service
+.env

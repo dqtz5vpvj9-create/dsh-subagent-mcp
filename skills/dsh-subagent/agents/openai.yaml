@@ -1,0 +1,10 @@
+interface:
+  display_name: "DSH Subagent"
+  short_description: "Delegate, follow up, and interrupt persistent DSH agents"
+  default_prompt: "Use $dsh-subagent to delegate this task to DSH and keep its session available for follow-up questions."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "dsh_subagent"
+      description: "Persistent DSH agents with progress and cancellation"
+      transport: "stdio"
