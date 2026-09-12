@@ -21,9 +21,9 @@ export function makeServer(manager) {
     try {return {content:[{type:'text',text:JSON.stringify(await fn(args))}]};}
     catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
   });
-  register('dsh_start','Start an independent DSH agent asynchronously. Returns an agent ID immediately. Set cwd explicitly. Default workspace-write; read-only enforces a sandbox. danger-full-access needs explicit task authorization.',{
+  register('dsh_start','Start an independent DSH agent asynchronously. Returns an agent ID immediately. Set cwd explicitly; sessions are grouped under that workspace. Default preset minimal (极简模式). Default workspace-write; read-only enforces a sandbox. danger-full-access needs explicit task authorization.',{
     task:z.string().min(1),cwd:z.string(),name:z.string().optional(),
-    model:z.string().optional(),provider:z.string().optional(),effort:z.string().optional(),
+    model:z.string().optional(),provider:z.string().optional(),effort:z.string().optional(),preset:z.string().min(1).optional(),
     permission:z.enum(['read-only','workspace-write','danger-full-access']).optional(),
   },a=>manager.start(a));
   register('dsh_status','Read status, partial visible output, final answer and finish reason.',id,a=>manager.get(a.agent_id),true);

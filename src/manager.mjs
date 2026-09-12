@@ -32,7 +32,12 @@ export class Manager {
     const task=previous.catch(()=>{}).then(fn); this.locks.set(id,task);
     try {return await task;} finally {if(this.locks.get(id)===task)this.locks.delete(id);}
   }
-  async runtime(a) {
+  runtime(a) {
+    // DSH's JSON workspace registry caches its state in each process.
+    // Boot and attach in order so concurrent starts cannot overwrite membership.
+    return this.serial('workspace-registration',()=>this.bootRuntime(a));
+  }
+  async bootRuntime(a) {
     if(this.live.has(a.id))return this.live.get(a.id);
     const rt=new this.RuntimeClass(a,this.config); this.live.set(a.id,rt);
     rt.on('notification',(method,params)=>this.notification(a.id,method,params));
@@ -44,7 +49,13 @@ export class Manager {
       this.event(a.id,'runtime/exit',{message:error.message});
     });
     try {
-      await rt.request('initialize',{cwd:a.cwd,provider:a.provider,model:a.model,reasoningEffort:a.effort,permission:a.permission,resume:a.persisted===true});
+      await rt.request('initialize',{cwd:a.cwd,provider:a.provider,model:a.model,reasoningEffort:a.effort,permission:a.permission,preset:a.preset,resume:a.persisted===true});
+      const identity=await rt.request('session/prepare',{sessionId:a.id});
+      const current=this.get(a.id);
+      current.workspace_id=identity.workspace_id;
+      current.preset=identity.preset;
+      current.persisted=true;
+      this.save(current);
       return rt;
     } catch(e) {await rt.close().catch(()=>{});this.live.delete(a.id);throw e;}
   }
@@ -80,9 +91,9 @@ export class Manager {
       if(p.status==='idle') this.live.get(id)?.request('session/checkpoint',{sessionId:id}).catch(e=>this.event(id,'checkpoint/error',{message:e.message}));
     }
   }
-  async start({task,cwd,name='',model='deepseek-v4-flash',provider='deepseek-official',effort='max',permission='workspace-write'}) {
+  async start({task,cwd,name='',model='deepseek-v4-flash',provider='deepseek-official',effort='max',permission='workspace-write',preset='minimal'}) {
     if(!isAbsolute(cwd)||!statSync(cwd).isDirectory())throw new Error('cwd must be an existing absolute directory');
-    const a={id:randomUUID(),name,cwd,model,provider,effort,permission,status:'starting',created_at:new Date().toISOString(),answer:'',partial_text:'',persisted:false};
+    const a={id:randomUUID(),name,cwd,model,provider,effort,permission,preset,status:'starting',created_at:new Date().toISOString(),answer:'',partial_text:'',persisted:false};
     this.save(a);
     // Return the ID immediately. Boot and prompt errors remain observable by status.
     this.serial(a.id,()=>this.submit(a.id,task)).catch(e=>{const b=this.get(a.id);b.status='error';b.error=e.message;this.save(b);this.event(a.id,'error',{message:e.message});});

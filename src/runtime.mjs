@@ -8,7 +8,7 @@ export class Runtime extends EventEmitter {
     this.pending = new Map();
     this.seq = 0;
     this.stderr = '';
-    this.child = spawn(process.execPath, [config.cli, '--profile', 'codex-subagent', '--patch', config.patch], {
+    this.child = spawn(process.execPath, [config.cli, '--profile', 'codex-subagent', '--patch', agent.preset ? config.patch : config.legacyPatch], {
       cwd: agent.cwd, env: {...process.env, DSH_CLI: config.cli}, stdio: ['pipe','pipe','pipe'],
     });
     this.child.stderr.on('data', d => {this.stderr = (this.stderr + d).slice(-8000);});

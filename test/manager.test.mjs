@@ -7,8 +7,8 @@ import {join} from 'node:path';
 import {Manager} from '../src/manager.mjs';
 class Fake extends EventEmitter {
   static all=[];
-  constructor(a){super();this.id=a.id;this.calls=[];Fake.all.push(this);}
-  async request(method,p){this.calls.push([method,p]);if(method==='session/prompt'){this.emit('notification','session.status',{sessionId:this.id,status:'running'});return{messageId:'receipt'};}if(method==='session/cancel'){this.emit('notification','session.status',{sessionId:this.id,status:'idle'});}return{};}
+  constructor(a){super();this.id=a.id;this.agent=a;this.calls=[];Fake.all.push(this);}
+  async request(method,p){this.calls.push([method,p]);if(method==='session/prepare')return{cwd:this.agent.cwd,preset:this.agent.preset??null,workspace_id:'workspace-fixture'};if(method==='session/prompt'){this.emit('notification','session.status',{sessionId:this.id,status:'running'});return{messageId:'receipt'};}if(method==='session/cancel'){this.emit('notification','session.status',{sessionId:this.id,status:'idle'});}return{};}
   async close(){}
   finish(text,kind='completed'){
     this.emit('notification','session.event',{sessionId:this.id,event:{type:'assistant/message',data:{message:{content:[{type:'text',text}]}}}});
@@ -47,4 +47,32 @@ test('service restart preserves unfinished agents without replaying prompts',asy
     const rt=restored.live.get(a.id);assert.equal(rt.calls[0][1].resume,true);
     assert.equal(rt.calls.filter(c=>c[0]==='session/prompt').length,1);
   }finally{await restored.shutdown();}
+});
+
+test('new agents use minimal and keep explicit presets across runtime restart',async t=>{
+  const{m,dir,config}=setup(t);
+  const a=await m.start({cwd:dir,task:'default'});
+  const b=await m.start({cwd:dir,task:'explicit',preset:'standard'});
+  await tick();
+  assert.equal(m.live.get(a.id).calls[0][1].preset,'minimal');
+  assert.equal(m.live.get(b.id).calls[0][1].preset,'standard');
+  assert.equal(m.get(a.id).preset,'minimal');
+  assert.equal(m.get(a.id).workspace_id,'workspace-fixture');
+  await m.shutdown();
+  const restored=new Manager(config,Fake);
+  try {
+    await restored.followup(b.id,'continue');
+    assert.equal(restored.live.get(b.id).calls[0][1].preset,'standard');
+    assert.equal(restored.live.get(b.id).calls[0][1].resume,true);
+  } finally {await restored.shutdown();}
+});
+
+test('legacy conversations retain their original composition on resume',async t=>{
+  const{m,dir}=setup(t);
+  const legacy={id:'legacy-session',cwd:dir,status:'interrupted',persisted:true,answer:'',partial_text:''};
+  m.save(legacy);
+  await m.followup(legacy.id,'continue');
+  assert.equal(m.live.get(legacy.id).calls[0][1].preset,undefined);
+  assert.equal(m.get(legacy.id).preset,null);
+  assert.equal(m.get(legacy.id).workspace_id,'workspace-fixture');
 });

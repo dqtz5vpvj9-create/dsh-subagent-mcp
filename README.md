@@ -77,3 +77,19 @@ The skill handles the delegation workflow; the MCP server supplies the execution
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) and the [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk). Thanks to [dsh-mcp](https://github.com/Mr-potato-123/dsh-mcp) and [dsh-cursor-codex](https://github.com/jeremy9682/dsh-cursor-codex) for exploring DSH delegation, and [DSH-Code](https://github.com/unlinearity/dsh-code) for the terminal UI that sparked this project.
 
 [MIT](LICENSE). Independent community project.
+
+## Workspace and agent preset
+
+`dsh_start` registers the session in the DSH workspace for its absolute `cwd`.
+The process directory alone does not establish sidebar membership. Status returns
+`workspace_id` once initialization finishes.
+
+New agents default to `preset: "minimal"` (极简模式). This mounts DSH's actual
+preset before the first prompt: a fixed system prompt and the persistent shell
+as its only tool. Pass `preset` explicitly to choose another installed preset;
+this is separate from the launch profile and the permission preset.
+
+Follow-ups retain the original preset. Existing sessions created before preset
+support keep their SDK composition and report `preset: null`; they are not
+silently converted mid-conversation. A daemon upgrade requires interrupting active
+work first, then explicitly continuing the same agent IDs after restart.

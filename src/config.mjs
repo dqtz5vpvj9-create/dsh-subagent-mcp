@@ -13,6 +13,28 @@ export function resolveDshCli() {
 export function runtimeConfig(state=stateDirectory()) {
   mkdirSync(state,{recursive:true,mode:0o700});
   const patch=join(state,'bridge.patch.yml');
-  writeFileSync(patch,`- id: sdk-jsonrpc-server\n  disabled: true\n- insert:\n    - id: codex-subagent-rpc\n      name: ${JSON.stringify(join(projectRoot,'src/dsh-plugin.mjs'))}\n`,{mode:0o600});
-  return {database:join(state,'state.sqlite'),cli:resolveDshCli(),patch};
+  const legacyPatch=join(state,'bridge-legacy.patch.yml');
+  const shared=`- id: sdk-jsonrpc-server
+  disabled: true
+- insert:
+    - id: workspace
+      name: '@deepseek-ai/dsh-workspace'
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: minimal
+    - id: codex-subagent-rpc
+      name: ${JSON.stringify(join(projectRoot,'src/dsh-plugin.mjs'))}
+`;
+  // As in DSH's Web composition, presets own the agent tools and prompt
+  // contributions. Keeping the base tools would make minimal non-minimal.
+  const agentRows=['tool-bash','tool-pwsh','tool-jobs','tool-fs','tool-fs-search',
+    'skill-filesystem','tool-skill','command-goal','tool-goal','plan-mode',
+    'compaction-basic','command-compact','tool-result-pruner','tool-subagent-control',
+    'tool-subagent-list-agents','tool-subagent','tool-subagent-fork','workflow-worker-thread',
+    'tool-workflow','tool-ralph','agent-instructions','tool-todo','tool-web'];
+  writeFileSync(patch,agentRows.map(id=>`- id: ${id}\n  disabled: true\n`).join('')+shared,{mode:0o600});
+  // Existing conversations keep the tool composition under which they ran.
+  writeFileSync(legacyPatch,shared,{mode:0o600});
+  return {database:join(state,'state.sqlite'),cli:resolveDshCli(),patch,legacyPatch};
 }

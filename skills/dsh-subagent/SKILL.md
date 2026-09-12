@@ -32,3 +32,19 @@ Use `dsh_list` to recover an earlier agent ID, matching the workspace and task r
 Distinguish `completed` from `error` and `interrupted`, and check `finish_reason`. A final text or successful MCP response alone is not task acceptance. Verify important claims against changed files, command output or test artifacts. Include the agent ID when it helps the user continue the work.
 
 If the MCP tools are unavailable, say so rather than silently substituting a one-shot shell command. Installation is documented in the repository README. This skill does not itself install services, change credentials, or authorize additional tasks. DSH activity appears through MCP rather than Codex's native `/agent` UI.
+
+## Workspace and agent preset
+
+`dsh_start` registers the session in the DSH workspace for its absolute `cwd`.
+The process directory alone does not establish sidebar membership. Status returns
+`workspace_id` once initialization finishes.
+
+New agents default to `preset: "minimal"` (极简模式). This mounts DSH's actual
+preset before the first prompt: a fixed system prompt and the persistent shell
+as its only tool. Pass `preset` explicitly to choose another installed preset;
+this is separate from the launch profile and the permission preset.
+
+Follow-ups retain the original preset. Existing sessions created before preset
+support keep their SDK composition and report `preset: null`; they are not
+silently converted mid-conversation. A daemon upgrade requires interrupting active
+work first, then explicitly continuing the same agent IDs after restart.
