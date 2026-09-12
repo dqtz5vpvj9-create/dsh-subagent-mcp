@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {runtimeConfig} from '../src/config.mjs';
 import {Runtime} from '../src/runtime.mjs';
+import {readHistory} from '../src/web-relay.mjs';
 
 test('real DSH persists workspace membership and mounts minimal before execution and resume',
   {skip:process.env.DSH_RUNTIME_TEST!=='1',timeout:60000},async t=>{
@@ -23,13 +24,20 @@ test('real DSH persists workspace membership and mounts minimal before execution
   writeFileSync(hook,`
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,existsSync,unlinkSync} from 'node:fs';
 const req=createRequire(process.env.DSH_CLI);
 const {renderPrompt}=await import(pathToFileURL(req.resolve('@deepseek-ai/dsh-system-prompt')));
 export const name='inspect-preset';
 export const inject=['agents','systemPrompt'];
 export function apply(ctx){
   ctx.on('agent/created',async ({agent})=>{
+    const timer=setInterval(()=>{
+      if(existsSync(${JSON.stringify(join(dir,'append-title'))})){
+        unlinkSync(${JSON.stringify(join(dir,'append-title'))});
+        agent.session.append('session/title',{title:'Live relay update',messageSeqs:[],source:{kind:'user'}});
+      }
+    },20);
+    ctx.effect(()=>()=>clearInterval(timer),'test-title-trigger');
     try {
       const assembly=await agent.ctx.systemPrompt.assemble({scope:agent});
       writeFileSync(${JSON.stringify(snapshot)},JSON.stringify({prompt:renderPrompt(assembly),tools:assembly.tools.map(t=>t.name),contexts:assembly.contexts}));
@@ -54,7 +62,23 @@ export function apply(ctx){
   assert.equal(actual.prompt,'You are a helpful software engineer assistant.');
   assert.deepEqual(actual.tools,[process.platform==='win32'?'pwsh':'bash']);
   assert.deepEqual(actual.contexts,[]);
+  const request={address:{kind:'session',sessionId:agent.id},assistantStream:true};
+  const abort=new AbortController();
+  const stream=readHistory(join(dir,'state/web',agent.id+'.sock'),'follow',request,abort.signal);
+  const opening=await stream.next();
+  assert.equal(opening.value.type,'snapshot');
+  writeFileSync(join(dir,'append-title'),'');
+  const update=await stream.next();
+  assert.equal(update.value.event.type,'session/title');
+  assert.equal(update.value.event.data.title,'Live relay update');
+  assert.equal(update.value.event.seq,opening.value.cursor+1);
+  abort.abort();await stream.return();
   await rt.close();
   const resumed=await initialize(true);
   assert.deepEqual(resumed,first);
+  const reopened=readHistory(join(dir,'state/web',agent.id+'.sock'),'follow',request,new AbortController().signal);
+  const reconnect=await reopened.next();
+  assert.ok(reconnect.value.records.some(r=>r.event?.data?.title==='Live relay update'));
+  await reopened.return();
+  assert.deepEqual(JSON.parse(readFileSync(snapshot,'utf8')),actual);
 });

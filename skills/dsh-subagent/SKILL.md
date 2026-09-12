@@ -48,3 +48,8 @@ Follow-ups retain the original preset. Existing sessions created before preset
 support keep their SDK composition and report `preset: null`; they are not
 silently converted mid-conversation. A daemon upgrade requires interrupting active
 work first, then explicitly continuing the same agent IDs after restart.
+
+For live progress in DSH's browser, install the companion Web adapter with
+`node scripts/install-web.mjs` from the bridge repository. MCP progress and Web
+progress are separate transports; verify the Web adapter before promising live
+browser updates. See `docs/operations.md` for installation and acceptance tests.

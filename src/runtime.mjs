@@ -1,5 +1,6 @@
 import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
+import {join,dirname} from 'node:path';
 import {EventEmitter} from 'node:events';
 
 export class Runtime extends EventEmitter {
@@ -9,7 +10,7 @@ export class Runtime extends EventEmitter {
     this.seq = 0;
     this.stderr = '';
     this.child = spawn(process.execPath, [config.cli, '--profile', 'codex-subagent', '--patch', agent.preset ? config.patch : config.legacyPatch], {
-      cwd: agent.cwd, env: {...process.env, DSH_CLI: config.cli}, stdio: ['pipe','pipe','pipe'],
+      cwd: agent.cwd, env: {...process.env, DSH_CLI: config.cli, DSH_SUBAGENT_WEB_SOCKET: join(dirname(config.database),'web',agent.id+'.sock')}, stdio: ['pipe','pipe','pipe'],
     });
     this.child.stderr.on('data', d => {this.stderr = (this.stderr + d).slice(-8000);});
     createInterface({input:this.child.stdout}).on('line', line => {

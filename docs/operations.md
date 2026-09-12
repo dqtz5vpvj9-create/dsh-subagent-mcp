@@ -29,3 +29,30 @@ systemctl --user disable --now dsh-subagent-mcp.service
 
 The optional skill remains a link to [`skills/dsh-subagent`](../skills/dsh-subagent); remove that link separately if you no longer need it.
 
+
+## Live progress in the DSH Web UI
+
+Install the read-only Web adapter into an existing Web profile:
+
+```sh
+node scripts/install-web.mjs
+```
+
+A Web profile with `patchReload: live` loads it without restarting its agents.
+Otherwise restart that Web profile after its work has finished. The MCP daemon
+must also run the matching bridge version; finish or interrupt its work before
+restarting it.
+
+Each SDK runtime exposes its native DSH history and control streams through a
+mode-0600 Unix socket under the bridge state's `web` directory. The Web adapter
+uses that owner for live history, assistant deltas, projections, and pagination.
+Ordinary Web sessions keep their original path. It does not forward execution,
+prompt, or cancellation commands to the SDK, and does not write a second copy of
+its session log. Once the owner exits, reopening the conversation reads the
+persisted history normally.
+
+`DSH_RUNTIME_TEST=1 npm test` checks the actual minimal prompt and tool catalog,
+resume, and live event replay with an installed DSH. `node test/web-live.mjs`
+additionally runs a real-model, isolated Web/SDK/browser acceptance test. Set
+`PLAYWRIGHT_MODULE` to an installed Playwright module if it is outside this
+package, and optionally `CHROMIUM_EXECUTABLE` to the browser executable.

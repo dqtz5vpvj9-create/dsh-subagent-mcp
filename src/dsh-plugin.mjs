@@ -1,14 +1,22 @@
 // Extend the installed SDK presentation layer; all execution stays in DSH.
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { serveHistory } from './web-relay.mjs';
 import { pathToFileURL } from 'node:url';
 const requireDsh = createRequire(process.env.DSH_CLI);
 const pkg = name => import(pathToFileURL(requireDsh.resolve(name)).href);
 const { HarnessSdkJsonRpcServer } = await pkg('@deepseek-ai/dsh-sdk-jsonrpc-server');
 const { JsonRpcLineTransport } = await pkg('@deepseek-ai/dsh-sdk-protocol');
+const {SessionHistoryController}=await import(pathToFileURL(join(dirname(requireDsh.resolve('@deepseek-ai/dsh-api-session-controller')),'types/history.js')).href);
+const {SessionControlController}=await import(pathToFileURL(join(dirname(requireDsh.resolve('@deepseek-ai/dsh-api-session-controller')),'types/control.js')).href);
 export const name = 'codex-subagent-rpc';
-export const inject = ['agents', 'sessions', 'permissionPresets', 'sdkAppStartup', 'loader', 'workspaceRegistry', 'agentPresets'];
+export const inject = ['agents', 'sessions', 'permissionPresets', 'sdkAppStartup', 'loader', 'workspaceRegistry', 'agentPresets', 'sessionQuery', 'sessionProjections'];
 
 export function apply(ctx) {
+  const history=new SessionHistoryController(ctx,()=>{});
+  const control=new SessionControlController(ctx);
+  const relays=[];
+  ctx.effect(()=>async()=>{await Promise.all(relays.map(close=>close()));},'subagent-web-relays');
   const transport = new JsonRpcLineTransport(process.stdin, process.stdout);
   class Bridge extends HarnessSdkJsonRpcServer {
     async createSession(id) {
@@ -35,6 +43,8 @@ export function apply(ctx) {
       await ctx.sessions.flush(handle.agent.session);
       const workspace = await ctx.workspaceRegistry.create(this.cwd);
       await workspace.attachSession(id);
+      if(process.env.DSH_SUBAGENT_WEB_SOCKET)
+        relays.push(await serveHistory(process.env.DSH_SUBAGENT_WEB_SOCKET,id,history,control));
       return rec;
     }
   }
