@@ -59,6 +59,14 @@ npm run setup -- --skill
 
 如果 DeepSeek key 只在当前 shell 的 `DEEPSEEK_API_KEY` 中，在安装命令后加上 `--capture-key`。详细配置见 [安装与凭据](docs/setup.md)。
 
+如果也使用 DSH 网页端，先初始化 Web profile，再安装适配器：
+
+```sh
+node scripts/install-web.mjs
+```
+
+配置了 `patchReload: live` 的 Web profile 会自动加载；否则请等其任务结束后重启。详见 [网页接入与升级说明](docs/operations.md#live-progress-in-the-dsh-web-ui)。
+
 新开 Codex 会话，试试：
 
 ```text
@@ -67,6 +75,16 @@ npm run setup -- --skill
 ```
 
 skill 指导 Codex 如何委派和跟进，MCP 提供实际执行工具。DSH 的工作会显示为 Codex 中的 MCP 活动。
+
+## 默认极简模式，网页同步查看进度
+
+新子代理默认使用 DSH 的**极简模式**，完整系统提示词是：
+
+> You are a helpful software engineer assistant.
+
+这个模式只配备持久 shell 工具，在首个任务开始前加载，后续追问沿用同一模式。需要其他模式时，可以显式传入 `preset`；升级前创建的旧会话保留原有配置。
+
+会话会按工作目录登记到 DSH 工作区。安装网页适配器后，**DSH 网页端会实时收到工具活动和流式回复，无须手动刷新**。你可以在 Codex 中委派任务，同时在浏览器里看执行过程；跟随最新输出时，长回复会随内容到达自动滚动。
 
 ## 进一步使用
 
@@ -77,16 +95,3 @@ skill 指导 Codex 如何委派和跟进，MCP 提供实际执行工具。DSH �
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 和 [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk) 构建。感谢 [dsh-mcp](https://github.com/Mr-potato-123/dsh-mcp) 与 [dsh-cursor-codex](https://github.com/jeremy9682/dsh-cursor-codex) 对 DSH 委派的探索，以及启发本项目的终端界面 [DSH-Code](https://github.com/unlinearity/dsh-code)。
 
 [MIT 许可](LICENSE)，独立社区项目。
-
-## 工作目录与极简模式
-
-`dsh_start` 的 `cwd` 必须是已存在的绝对目录。桥接服务会把会话登记到
-DSH 对应的工作区，初始化完成后可在状态中看到 `workspace_id`。
-
-新子代理默认使用 `preset: "minimal"`（极简模式），实际加载固定系统提示词和
-持久 shell 工具。可通过 `preset` 选择其他已安装的模式；它与启动 profile、
-权限 preset 是三个不同的设置。
-
-后续对话沿用最初的 preset。升级前创建的会话保留原 SDK 配置，并显示
-`preset: null`，不会在执行途中更换工具集。升级服务前先中断运行中的任务，
-重启后用同一个 agent ID 显式继续。

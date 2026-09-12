@@ -59,6 +59,14 @@ npm run setup -- --skill
 
 If your DeepSeek key is only in the current shell's `DEEPSEEK_API_KEY`, add `--capture-key` to the setup command. See [installation and credentials](docs/setup.md) for details.
 
+If you also use DSH Web, initialize its Web profile and install the adapter:
+
+```sh
+node scripts/install-web.mjs
+```
+
+Profiles with `patchReload: live` load it automatically; otherwise restart the Web profile after its work finishes. See [Web integration and upgrades](docs/operations.md#live-progress-in-the-dsh-web-ui).
+
 Open a new Codex session and try:
 
 ```text
@@ -67,6 +75,16 @@ Keep the agent available for follow-up questions.
 ```
 
 The skill handles the delegation workflow; the MCP server supplies the execution tools. DSH appears in Codex as MCP activity.
+
+## Minimal by default, visible in DSH Web
+
+New subagents use DSH's **minimal preset** by default. Its complete system prompt is:
+
+> You are a helpful software engineer assistant.
+
+The preset supplies a persistent shell as its only tool. It is mounted before the first task, and follow-ups keep the same preset. Pass `preset` explicitly to choose another installed preset. Older sessions retain their original configuration.
+
+Sessions are registered under their working directory in DSH. With the Web adapter installed, **the DSH Web conversation receives tool activity and streamed replies without a manual refresh**. You can watch a task delegated from Codex in the browser; when following the latest output, long replies scroll into view as they arrive.
 
 ## Go further
 
@@ -77,19 +95,3 @@ The skill handles the delegation workflow; the MCP server supplies the execution
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) and the [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk). Thanks to [dsh-mcp](https://github.com/Mr-potato-123/dsh-mcp) and [dsh-cursor-codex](https://github.com/jeremy9682/dsh-cursor-codex) for exploring DSH delegation, and [DSH-Code](https://github.com/unlinearity/dsh-code) for the terminal UI that sparked this project.
 
 [MIT](LICENSE). Independent community project.
-
-## Workspace and agent preset
-
-`dsh_start` registers the session in the DSH workspace for its absolute `cwd`.
-The process directory alone does not establish sidebar membership. Status returns
-`workspace_id` once initialization finishes.
-
-New agents default to `preset: "minimal"` (极简模式). This mounts DSH's actual
-preset before the first prompt: a fixed system prompt and the persistent shell
-as its only tool. Pass `preset` explicitly to choose another installed preset;
-this is separate from the launch profile and the permission preset.
-
-Follow-ups retain the original preset. Existing sessions created before preset
-support keep their SDK composition and report `preset: null`; they are not
-silently converted mid-conversation. A daemon upgrade requires interrupting active
-work first, then explicitly continuing the same agent IDs after restart.
