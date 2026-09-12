@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
+  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/dsh-subagent-mcp"><img src="https://img.shields.io/npm/v/dsh-subagent-mcp?style=flat-square&amp;color=CB3837" alt="npm version"></a>
   <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/DeepSeek-Harness-4D6BFE?style=flat-square" alt="Built on DeepSeek Harness"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-server-222222?style=flat-square" alt="MCP server"></a>
   <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-167D72?style=flat-square" alt="Codex skill included"></a>
@@ -33,18 +34,17 @@ Give Codex a DeepSeek coding agent that can read your repo, edit files, and run 
 You'll need **Linux with systemd**, Node.js satisfying the [package requirement](package.json), Codex CLI, and a working DSH installation with provider credentials.
 
 ```sh
-git clone https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp.git
-cd dsh-subagent-mcp
-npm ci --ignore-scripts
-npm run setup -- --skill
+npx -y dsh-subagent-mcp@latest setup --skill
 ```
+
+No clone needed. Setup installs the runtime in a persistent user directory, so the service and skill do not depend on the npx cache. Add `--web` during setup to connect an already initialized DSH Web profile in the same command.
 
 If your DeepSeek key is only in the current shell's `DEEPSEEK_API_KEY`, add `--capture-key` to the setup command. See [installation and credentials](docs/setup.md) for details.
 
 If you also use DSH Web, initialize its Web profile and install the adapter:
 
 ```sh
-node scripts/install-web.mjs
+npx -y dsh-subagent-mcp@latest web
 ```
 
 Profiles with `patchReload: live` load it automatically; otherwise restart the Web profile after its work finishes. See [Web integration and upgrades](docs/operations.md#live-progress-in-the-dsh-web-ui).

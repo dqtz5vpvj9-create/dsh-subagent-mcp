@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
+  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/dsh-subagent-mcp"><img src="https://img.shields.io/npm/v/dsh-subagent-mcp?style=flat-square&amp;color=CB3837" alt="npm version"></a>
   <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/DeepSeek-Harness-4D6BFE?style=flat-square" alt="Built on DeepSeek Harness"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-server-222222?style=flat-square" alt="MCP server"></a>
   <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-167D72?style=flat-square" alt="Codex skill included"></a>
@@ -33,18 +34,17 @@
 需要 **Linux + systemd**、满足 [项目要求](package.json) 的 Node.js、Codex CLI，以及已配置模型凭据的 DSH。
 
 ```sh
-git clone https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp.git
-cd dsh-subagent-mcp
-npm ci --ignore-scripts
-npm run setup -- --skill
+npx -y dsh-subagent-mcp@latest setup --skill
 ```
+
+无需 clone。安装器会把运行文件放到固定的用户目录，后台服务和 skill 不依赖 npx 缓存。也可以在首次安装时加上 `--web`，一起接入已初始化的 DSH Web profile。
 
 如果 DeepSeek key 只在当前 shell 的 `DEEPSEEK_API_KEY` 中，在安装命令后加上 `--capture-key`。详细配置见 [安装与凭据](docs/setup.md)。
 
 如果也使用 DSH 网页端，先初始化 Web profile，再安装适配器：
 
 ```sh
-node scripts/install-web.mjs
+npx -y dsh-subagent-mcp@latest web
 ```
 
 配置了 `patchReload: live` 的 Web profile 会自动加载；否则请等其任务结束后重启。详见 [网页接入与升级说明](docs/operations.md#live-progress-in-the-dsh-web-ui)。

@@ -1,7 +1,6 @@
 {
   "name": "dsh-subagent-mcp",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.mjs",
@@ -20,5 +19,31 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp.git"
+  },
+  "bin": {
+    "dsh-subagent-mcp": "src/cli.mjs"
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    "skills/",
+    "docs/",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek",
+    "deepseek-harness",
+    "mcp",
+    "mcp-server",
+    "codex",
+    "subagents",
+    "ai-agents"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

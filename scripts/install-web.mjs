@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {readFileSync,appendFileSync,existsSync} from 'node:fs';
+import {readFileSync,appendFileSync,writeFileSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {createRequire} from 'node:module';
@@ -11,7 +11,9 @@ if(!existsSync(patch))throw new Error('Initialize the DSH web profile before ins
 const content=readFileSync(patch,'utf8');
 // DSH patches contain !!js expressions; inspect just the literal entry ID.
 if(/^\s*- id: dsh-subagent-web\s*$/m.test(content)){
- console.log('DSH Web relay entry is already installed.');
+ const updated=content.replace(/(^[ \t]*- id: dsh-subagent-web\s*\n[ \t]*name:)[^\n]*/m,(_,key)=>key+' '+JSON.stringify(join(projectRoot,'src/web-plugin.mjs')));
+ if(updated!==content)writeFileSync(patch,updated);
+ console.log('DSH Web relay entry is installed.');
 }else{
  const row=[{insert:[{id:'dsh-subagent-web',name:join(projectRoot,'src/web-plugin.mjs'),...(process.env.DSH_SUBAGENT_STATE?{config:{socketDirectory:join(process.env.DSH_SUBAGENT_STATE,'web')}}:{})}]}];
  appendFileSync(patch,'\n# Live history from SDK subagents; no execution ownership in the Web process.\n'+yaml.dump(row));
