@@ -1,50 +1,32 @@
-# DSH Subagent MCP
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
+</p>
 
-### Codex 带队，DeepSeek 干活。
+<p align="center">
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/DeepSeek-Harness-4D6BFE?style=flat-square" alt="Built on DeepSeek Harness"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-server-222222?style=flat-square" alt="MCP server"></a>
+  <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-167D72?style=flat-square" alt="Codex skill included"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-%E2%89%A524-417E38?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js 24 or newer"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-A6ADBB?style=flat-square" alt="MIT license"></a>
+  <a href="https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/stargazers"><img src="https://img.shields.io/github/stars/dqtz5vpvj9-create/dsh-subagent-mcp?style=flat-square&amp;label=Stars&amp;color=E9B44C" alt="GitHub stars"></a>
+</p>
 
-[English](README.md) · [开始使用](#开始使用) · [Codex skill](skills/dsh-subagent/SKILL.md)
+<p align="center">中文 · <a href="README.md">English</a> · <a href="#开始使用">开始使用</a> · <a href="docs/usage.md">使用指南</a></p>
 
 给 Codex 配一个能读代码、改文件、跑测试的 DeepSeek 编程代理。做完了继续追问，执行中随时查看进度，方向变了就叫停。
 
 **你在 Codex 里把握全局，DSH 在自己的会话里完成委派的工作。**
 
-## 把精力留给决策，把具体工作交出去
+## 为持续协作而做
 
-排查一个大仓库里的 bug，往往要翻几十个文件，才能找到值得讨论的线索。做一次迁移，可能要逐个修改模块，再处理一轮测试失败。这些工作可以交给一个独立的代理去完成。
-
-DSH Subagent MCP 让 Codex 直接调用 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。DSH 带着自己的模型、工具和工作区访问能力处理任务，Codex 可以继续研究另一部分问题，也可以随时查看进展，根据结果决定下一步。
-
-而且，第一次回答之后，这个代理还在。让它沿着刚找到的线索继续查，让它动手修改，再把你的反馈交给它。**跟已经了解任务的代理接着做。**
-
-## 从“帮我查一下”，到“就按这个改”
-
-装好配套 skill 后，你可以这样使用：
-
-```text
-你 → Codex
-用 $dsh-subagent 查一下，为什么请求取消后 worker 还在运行。
-让它追踪代码并报告原因，先不要修改文件。
-
-你 → Codex
-DSH 现在查到哪了？
-
-你 → Codex
-让刚才那个代理继续看看，超时路径是不是也有同样的问题。
-```
-
-对于已获准修改文件的代理，还可以接着安排：
-
-```text
-你 → Codex
-让 DSH 按确认的方案修复，并运行相关测试。
-
-你 → Codex
-先停一下，我们换个思路。确认它停止后，把这个新方案交给它：……
-```
-
-- **追问不用从头交代。** 继续原来的 DSH 对话，让它接着分析、修改或验证。
-- **交出去的工作，看得见进度。** 查询当前输出和工具执行情况，也可以让 Codex 先处理别的任务。
-- **长任务也能随时调整。** 需要时中断并改变方向；关闭客户端后，后台服务继续执行，下次连接还能找回任务。
+| | 用起来是什么样 |
+| :--- | :--- |
+| **默认极简模式** | 首个任务开始前加载 DSH 原生极简 preset，固定系统提示词，配备持久 shell。 |
+| **网页实时更新** | 安装 Web 适配器后，工具活动和流式回复直接出现在网页中，无须 Ctrl-R。 |
+| **接着原会话追问** | 让同一个代理继续分析、修改或验证，保留前文。 |
+| **随时中断和调整** | 改变方向时先停止当前任务，再把新要求交给它。 |
+| **按目录归组** | 会话登记到对应的 DSH 工作区，方便在网页端找回。 |
+| **后台持续执行** | 关闭 Codex 客户端后，本地服务仍可继续任务；重新连接后查看进度。 |
 
 ## 开始使用
 
@@ -76,6 +58,32 @@ node scripts/install-web.mjs
 
 skill 指导 Codex 如何委派和跟进，MCP 提供实际执行工具。DSH 的工作会显示为 Codex 中的 MCP 活动。
 
+## 从“帮我查一下”，到“就按这个改”
+
+装好配套 skill 后，你可以这样使用：
+
+```text
+你 → Codex
+用 $dsh-subagent 查一下，为什么请求取消后 worker 还在运行。
+让它追踪代码并报告原因，先不要修改文件。
+
+你 → Codex
+DSH 现在查到哪了？
+
+你 → Codex
+让刚才那个代理继续看看，超时路径是不是也有同样的问题。
+```
+
+对于已获准修改文件的代理，还可以接着安排：
+
+```text
+你 → Codex
+让 DSH 按确认的方案修复，并运行相关测试。
+
+你 → Codex
+先停一下，我们换个思路。确认它停止后，把这个新方案交给它：……
+```
+
 ## 默认极简模式，网页同步查看进度
 
 新子代理默认使用 DSH 的**极简模式**，完整系统提示词是：
@@ -89,6 +97,8 @@ skill 指导 Codex 如何委派和跟进，MCP 提供实际执行工具。DSH �
 ## 进一步使用
 
 [追问、进度与中断](docs/usage.md) · [权限与架构](docs/architecture.md) · [服务管理](docs/operations.md) · [验证记录](docs/validation.md)
+
+如果这个项目让你更方便地使用 DSH，欢迎点个 Star，也欢迎通过 [Issues](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/issues) 分享使用场景和遇到的问题。
 
 ## 致谢
 

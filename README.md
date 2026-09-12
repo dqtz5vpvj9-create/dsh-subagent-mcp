@@ -1,50 +1,32 @@
-# DSH Subagent MCP
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
+</p>
 
-### Let Codex lead. Put DeepSeek to work.
+<p align="center">
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/DeepSeek-Harness-4D6BFE?style=flat-square" alt="Built on DeepSeek Harness"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-server-222222?style=flat-square" alt="MCP server"></a>
+  <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-167D72?style=flat-square" alt="Codex skill included"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-%E2%89%A524-417E38?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js 24 or newer"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-A6ADBB?style=flat-square" alt="MIT license"></a>
+  <a href="https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/stargazers"><img src="https://img.shields.io/github/stars/dqtz5vpvj9-create/dsh-subagent-mcp?style=flat-square&amp;label=Stars&amp;color=E9B44C" alt="GitHub stars"></a>
+</p>
 
-[中文](README.zh-CN.md) · [Get started](#get-started) · [Codex skill](skills/dsh-subagent/SKILL.md)
+<p align="center">English · <a href="README.zh-CN.md">中文</a> · <a href="#get-started">Quick start</a> · <a href="docs/usage.md">Usage guide</a></p>
 
 Give Codex a DeepSeek coding agent that can read your repo, edit files, and run tests. Ask it another question when it finishes. Check in while it works. Stop it when the plan changes.
 
 **Your Codex conversation becomes the place you direct the work. DSH handles the delegated task in its own session.**
 
-## Keep the big picture. Delegate the legwork.
+## Built for ongoing collaboration
 
-Tracing a bug through a large repo can mean opening dozens of files before making one decision. A migration can mean repeating an edit across modules, then working through test failures. That work needs doing—and it can have its own agent.
-
-With DSH Subagent MCP, Codex hands a task to [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), which brings its own model loop, tools, and workspace access. Codex can work on another part of the problem, inspect the worker's progress, and use its findings to decide what happens next.
-
-The agent stays available after its first answer. Follow the lead it found, ask it to make the change, or give it feedback on the result. **Keep working with the agent that already knows the task.**
-
-## From “look into this” to “make the change”
-
-An example workflow with the bundled skill:
-
-```text
-You → Codex
-Use $dsh-subagent to investigate why cancelled requests leave workers running.
-Have it trace the code and report what it finds. Don't change files yet.
-
-You → Codex
-What has DSH found so far?
-
-You → Codex
-Ask that same agent whether the timeout path has the same problem.
-```
-
-For an agent given permission to edit:
-
-```text
-You → Codex
-Have DSH implement the agreed fix and run the relevant tests.
-
-You → Codex
-Stop it. We've changed the approach. Wait until it stops, then give it this plan: …
-```
-
-- **Follow up without briefing a new agent.** The original DSH conversation carries forward.
-- **See the work as it happens.** Ask for current output and tool activity, or let Codex handle another task while DSH runs.
-- **Stay in control of long tasks.** Interrupt and redirect. Close your client and reconnect later; the local service keeps the task running.
+| | What you get |
+| :--- | :--- |
+| **Minimal by default** | DSH's native minimal preset, mounted before the first task: a fixed system prompt and persistent shell. |
+| **Live in your browser** | With the Web adapter installed, tool activity and streamed replies arrive in DSH Web without refreshing. |
+| **A conversation that continues** | Ask the same agent to investigate, implement, or verify. Its earlier context stays with it. |
+| **Interrupt and redirect** | Stop the current task, then give the agent a new direction. |
+| **Workspaces that make sense** | Sessions are registered under their working directory in DSH. |
+| **Work survives a disconnect** | The local service keeps running when the Codex client closes. Reconnect to check progress. |
 
 ## Get started
 
@@ -76,6 +58,32 @@ Keep the agent available for follow-up questions.
 
 The skill handles the delegation workflow; the MCP server supplies the execution tools. DSH appears in Codex as MCP activity.
 
+## From “look into this” to “make the change”
+
+An example workflow with the bundled skill:
+
+```text
+You → Codex
+Use $dsh-subagent to investigate why cancelled requests leave workers running.
+Have it trace the code and report what it finds. Don't change files yet.
+
+You → Codex
+What has DSH found so far?
+
+You → Codex
+Ask that same agent whether the timeout path has the same problem.
+```
+
+For an agent given permission to edit:
+
+```text
+You → Codex
+Have DSH implement the agreed fix and run the relevant tests.
+
+You → Codex
+Stop it. We've changed the approach. Wait until it stops, then give it this plan: …
+```
+
 ## Minimal by default, visible in DSH Web
 
 New subagents use DSH's **minimal preset** by default. Its complete system prompt is:
@@ -89,6 +97,8 @@ Sessions are registered under their working directory in DSH. With the Web adapt
 ## Go further
 
 [Follow-ups, progress and cancellation](docs/usage.md) · [Permissions and architecture](docs/architecture.md) · [Service management](docs/operations.md) · [Validation](docs/validation.md)
+
+If this makes DSH useful in your workflow, a star helps others find it. Share what you build—or what gets in the way—in [Issues](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/issues).
 
 ## Built on
 
