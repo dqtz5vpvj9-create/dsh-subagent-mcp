@@ -1,4 +1,4 @@
-# Validation
+# Development validation — 2026-09-12
 
 Tested on Linux with Node 24.19.0, DSH 0.1.5-rc.1 and Codex CLI 0.154.0.
 
