@@ -1,11 +1,13 @@
+import {EventEmitter} from 'node:events';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {statSync} from 'node:fs';
 import {isAbsolute} from 'node:path';
 import {Runtime} from './runtime.mjs';
 
-export class Manager {
+export class Manager extends EventEmitter {
   constructor(config, RuntimeClass = Runtime) {
+    super();
     this.config = config; this.RuntimeClass = RuntimeClass; this.live = new Map(); this.locks = new Map();
     this.db = new DatabaseSync(config.database);
     this.db.exec(`PRAGMA journal_mode=WAL;
@@ -18,7 +20,7 @@ export class Manager {
       }
     }
   }
-  save(a) {a.updated_at = new Date().toISOString(); this.db.prepare('INSERT OR REPLACE INTO agents VALUES (?,?)').run(a.id,JSON.stringify(a));}
+  save(a) {a.updated_at = new Date().toISOString(); this.db.prepare('INSERT OR REPLACE INTO agents VALUES (?,?)').run(a.id,JSON.stringify(a)); this.emit('state:'+a.id,a);}
   get(id) {const r = this.db.prepare('SELECT data FROM agents WHERE id=?').get(id); if (!r) throw new Error('Unknown agent: '+id); return JSON.parse(r.data);}
   list() {return this.db.prepare('SELECT data FROM agents ORDER BY rowid DESC').all().map(r=>JSON.parse(r.data));}
   event(id,type,data) {this.db.prepare('INSERT INTO events(agent,time,type,data) VALUES (?,?,?,?)').run(id,new Date().toISOString(),type,JSON.stringify(data));}
@@ -26,6 +28,22 @@ export class Manager {
     this.get(id);
     const rows=this.db.prepare('SELECT * FROM events WHERE agent=? AND seq>? ORDER BY seq LIMIT ?').all(id,after,limit);
     return {events:rows.map(r=>({...r,data:JSON.parse(r.data)})),next_cursor:rows.at(-1)?.seq ?? after};
+  }
+  wait(id,seconds=25,signal) {
+    const active=a=>['starting','running','interrupting'].includes(a.status);
+    const result=(a,outcome)=>({...a,wait_outcome:outcome,next_action:active(a)?'continue_waiting':a.status==='completed'?'review_and_continue':a.status==='error'?'handle_error':'respect_stop'});
+    const initial=this.get(id);
+    if(signal?.aborted)return Promise.reject(signal.reason??new Error('Wait cancelled'));
+    if(!active(initial))return Promise.resolve(result(initial,'settled'));
+    return new Promise((resolve,reject)=>{
+      const event='state:'+id;
+      const cleanup=()=>{clearTimeout(timer);this.off(event,onState);signal?.removeEventListener('abort',onAbort);};
+      const onState=a=>{if(!active(a)){cleanup();resolve(result(a,'settled'));}};
+      const onAbort=()=>{cleanup();reject(signal.reason??new Error('Wait cancelled'));};
+      const timer=setTimeout(()=>{cleanup();resolve(result(this.get(id),'timeout'));},seconds*1000);
+      this.on(event,onState);
+      signal?.addEventListener('abort',onAbort,{once:true});
+    });
   }
   async serial(id, fn) {
     const previous=this.locks.get(id) ?? Promise.resolve();
@@ -101,8 +119,10 @@ export class Manager {
   }
   async submit(id,task) {
     let a=this.get(id);
-    const rt=await this.runtime(a);
-    a=this.get(id); a.status='running';a.answer='';a.partial_text='';a.finish_reason=null;a.error=null;this.save(a);
+    a.status='starting';a.answer='';a.partial_text='';a.finish_reason=null;a.error=null;this.save(a);
+    let rt;
+    try {rt=await this.runtime(a);} catch(e) {a=this.get(id);a.status='error';a.error=e.message;this.save(a);throw e;}
+    a=this.get(id);a.status='running';this.save(a);
     let receipt;
     try {receipt=await rt.request('session/prompt',{sessionId:id,contentBlocks:[{type:'text',text:task}]});}
     catch(e){a=this.get(id);a.status='error';a.error=e.message;this.save(a);throw e;}

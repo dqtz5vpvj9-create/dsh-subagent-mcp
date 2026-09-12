@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import net from 'node:net';
-import {mkdirSync,chmodSync,existsSync,unlinkSync} from 'node:fs';
+import {mkdirSync,chmodSync,existsSync,unlinkSync,readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -12,13 +12,13 @@ import {runtimeConfig} from './config.mjs';
 
 const state=process.env.DSH_SUBAGENT_STATE ?? join(homedir(),'.local/state/dsh-subagent-mcp');
 const socketPath=join(state,'server.sock');
-const instructions='Delegate bounded tasks with dsh_start and retain agent_id. Poll dsh_status/dsh_events for progress; dsh_wait waits at most 25 seconds. After idle, dsh_followup continues the SAME DSH session. To redirect active work, dsh_interrupt first, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and real artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
+const instructions='Completion handoff: retain every delegated agent ID and keep the parent task active until its required children settle and their results are processed. When no independent work remains, call dsh_wait repeatedly; timeout means continue waiting, never task completion. A settled result is delivered through the pending tool call. This bridge does not wake an ended parent turn. On completed, verify artifacts and immediately continue the already authorized parent work; on error diagnose, and on interruption respect the stop. Delegate bounded tasks with dsh_start and retain agent_id. Poll dsh_status/dsh_events for progress; dsh_wait waits at most 25 seconds. After idle, dsh_followup continues the SAME DSH session. To redirect active work, dsh_interrupt first, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and real artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
 
 export function makeServer(manager) {
-  const server=new McpServer({name:'dsh-subagent-mcp',version:'0.1.0'},{instructions});
+  const server=new McpServer({name:'dsh-subagent-mcp',version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version},{instructions});
   const id={agent_id:z.string().uuid()};
-  const register=(name,description,schema,fn,readOnlyHint=false)=>server.registerTool(name,{description,inputSchema:schema,annotations:{readOnlyHint,destructiveHint:!readOnlyHint,openWorldHint:true}},async args=>{
-    try {return {content:[{type:'text',text:JSON.stringify(await fn(args))}]};}
+  const register=(name,description,schema,fn,readOnlyHint=false)=>server.registerTool(name,{description,inputSchema:schema,annotations:{readOnlyHint,destructiveHint:!readOnlyHint,openWorldHint:true}},async (args,extra)=>{
+    try {return {content:[{type:'text',text:JSON.stringify(await fn(args,extra))}]};}
     catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
   });
   register('dsh_start','Start an independent DSH agent asynchronously. Returns an agent ID immediately. Set cwd explicitly; sessions are grouped under that workspace. Default preset minimal (极简模式). Default workspace-write; read-only enforces a sandbox. danger-full-access needs explicit task authorization.',{
@@ -32,15 +32,11 @@ export function makeServer(manager) {
   register('dsh_followup','Continue an idle DSH agent with its original conversation. Busy agents must be interrupted first. Also resumes persisted sessions after service restart.',{...id,task:z.string().min(1)},a=>manager.followup(a.agent_id,a.task));
   register('dsh_interrupt','Cancel current execution and queued input; return only after DSH reaches idle. Keeps conversation and any files already changed.',id,a=>manager.interrupt(a.agent_id));
   register('dsh_close','Release an agent runtime and mark it closed. Retains its history and files.',id,a=>manager.close(a.agent_id));
-  register('dsh_wait','Wait for idle, error or interruption for up to 25 seconds; returns current state on timeout.',{...id,seconds:z.number().min(0).max(25).default(20)},async a=>{
-    const end=Date.now()+a.seconds*1000;
-    while(Date.now()<end && ['starting','running','interrupting'].includes(manager.get(a.agent_id).status))await new Promise(r=>setTimeout(r,250));
-    return manager.get(a.agent_id);
-  },true);
+  register('dsh_wait','Await completion through a pending tool call, returning immediately when the root agent settles. A timeout is NOT completion: keep waiting if parent work depends on this agent. On completed, verify artifacts and continue authorized parent work. Does not wake an ended parent turn.',{...id,seconds:z.number().min(0).max(25).default(25)},(a,extra)=>manager.wait(a.agent_id,a.seconds,extra.signal),true);
   return server;
 }
 
-async function main(){
+export async function main(){
   if(!process.argv.includes('--daemon')) {
     const socket=net.connect(socketPath);
     socket.on('error',e=>{console.error('DSH subagent service unavailable: '+e.message);process.exitCode=1;process.stdin.destroy();});

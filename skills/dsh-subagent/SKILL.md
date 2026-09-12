@@ -15,11 +15,36 @@ Set `permission: read-only` for investigation. Use `workspace-write` for authori
 
 Keep the returned `id` and pass it as `agent_id` on later calls. Starting returns immediately and is not proof that the model task succeeded. For parallel agents, divide write ownership so they do not edit the same files concurrently.
 
+## Completion handoff is mandatory
+
+You own the delegated task until its result has been checked and incorporated
+into the authorized parent work. Starting a child is not a completed handoff.
+Track its agent ID, objective, expected evidence, and the parent action that
+will follow completion. Preserve these across context compaction.
+
+The bridge does not wake an ended Codex turn. Do not end your turn with a promise
+of a future callback while required children are still running. Keep the parent
+turn active: do independent work when available, then call `dsh_wait`. It holds a
+pending tool call and returns as soon as the root agent settles. If it times out,
+continue waiting; a 25-second observation window is not a task deadline. Give
+concise progress updates between waits, without asking the user to remind you.
+
+On `completed`, check the finish reason and actual artifacts, then immediately
+perform the next already authorized parent step, such as review, integration,
+validation, or deployment. Do not stop at forwarding the child's final answer.
+On `error`, diagnose and resolve within scope. On `interrupted` or `closed`,
+respect the user's stop instruction; do not automatically resume.
+
+If the user explicitly requests detached background work or stops the parent,
+state that later retrieval requires a resumed parent turn. Web live updates and
+child process persistence do not provide parent wake-up. After reconnecting,
+recover the exact agent ID and inspect its state before continuing.
+
 ## Observe and continue
 
 - Use `dsh_status` for lifecycle state, visible partial output, answer and finish reason.
 - Use `dsh_events` with the previous `next_cursor` as `after` for incremental tool activity. Large events may be truncated.
-- Use `dsh_wait` to observe the agent for up to 25 seconds per call. This is not a task deadline: a running task continues after the call returns. Do other useful work between checks and query when progress matters; do not poll mechanically every 25 seconds.
+- Use `dsh_wait` for completion delivery. `wait_outcome: timeout` with `next_action: continue_waiting` means the child still needs supervision. `wait_outcome: settled` returns its final status and answer. Repeated waits are required when the parent has no independent work left; avoid tight `dsh_status` polling.
 - When the agent is idle, call `dsh_followup` on the same ID. Do not create a replacement agent for a follow-up question.
 - If it is busy and the user redirects or stops it, call `dsh_interrupt`. Wait for acknowledgement before sending the replacement task. A timeout is not confirmation that work stopped.
 
@@ -50,6 +75,6 @@ silently converted mid-conversation. A daemon upgrade requires interrupting acti
 work first, then explicitly continuing the same agent IDs after restart.
 
 For live progress in DSH's browser, install the companion Web adapter with
-`node scripts/install-web.mjs` from the bridge repository. MCP progress and Web
+`npx -y dsh-subagent-mcp@latest web`. MCP progress and Web
 progress are separate transports; verify the Web adapter before promising live
 browser updates. See `docs/operations.md` for installation and acceptance tests.

@@ -24,6 +24,7 @@ Give Codex a DeepSeek coding agent that can read your repo, edit files, and run 
 | :--- | :--- |
 | **Minimal by default** | DSH's native minimal preset, mounted before the first task: a fixed system prompt and persistent shell. |
 | **Live in your browser** | With the Web adapter installed, tool activity and streamed replies arrive in DSH Web without refreshing. |
+| **Completion handoff** | The skill keeps the parent waiting for dependent tasks, then checking artifacts and continuing authorized work. |
 | **A conversation that continues** | Ask the same agent to investigate, implement, or verify. Its earlier context stays with it. |
 | **Interrupt and redirect** | Stop the current task, then give the agent a new direction. |
 | **Workspaces that make sense** | Sessions are registered under their working directory in DSH. |
@@ -59,6 +60,8 @@ Keep the agent available for follow-up questions.
 The skill handles the delegation workflow; the MCP server supplies the execution tools. DSH appears in Codex as MCP activity.
 
 ## From “look into this” to “make the change”
+
+Completion returns through a pending tool call. The parent must keep its turn active; this does not automatically wake an ended conversation. See [completion handoff](docs/usage.md).
 
 An example workflow with the bundled skill:
 

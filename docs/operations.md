@@ -56,3 +56,17 @@ resume, and live event replay with an installed DSH. `node test/web-live.mjs`
 additionally runs a real-model, isolated Web/SDK/browser acceptance test. Set
 `PLAYWRIGHT_MODULE` to an installed Playwright module if it is outside this
 package, and optionally `CHROMIUM_EXECUTABLE` to the browser executable.
+
+## Completion handoff acceptance
+
+```sh
+DSH_RUNTIME_TEST=1 DSH_PACKAGE_TEST=1 npm test
+node test/completion-live.mjs
+```
+
+The real-model test sends a task through MCP, waits for its completion, checks
+its file, produces a dependent parent artifact, and asks the same child to verify
+it. This tests delivery and programmatic continuation. It does not prove that
+an arbitrary host model will follow the skill or that a finished Codex turn can
+be awakened. The CLI test separately exercises daemon startup and the stdio MCP
+handshake, rather than accepting `--help` as server validation.

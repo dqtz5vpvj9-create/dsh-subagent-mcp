@@ -38,6 +38,6 @@ Finish or interrupt running bridge tasks before rerunning setup.`);
     };
     if(command==='setup')run('install.mjs',args.filter(x=>x!=='--web'));
     if(command==='web'||args.includes('--web'))run('install-web.mjs');
-  } else if(command===undefined||command==='--daemon')await import('./server.mjs');
+  } else if(command===undefined||command==='--daemon')await (await import('./server.mjs')).main();
   else throw new Error('Unknown command: '+command+'. Run dsh-subagent-mcp --help.');
 } catch(error) {console.error(error.message);process.exitCode=1;}

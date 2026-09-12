@@ -22,7 +22,7 @@ Disconnecting a client leaves work running. Restarting the daemon stops its proc
 - A child does not inherit the Codex transcript. Include the relevant context, permitted actions, and acceptance criteria in its task.
 - DSH permissions are independent of Codex permissions. Do not grant broader access than the parent task authorizes. Approval escalation has no human answerer in this bridge and fails closed.
 - Interrupting does not undo files already changed. Check results against actual artifacts.
-- Progress is queried through tools; it is not automatically pushed into the parent conversation. Large tool events are marked truncated.
+- Completion events release pending `dsh_wait` calls. The skill keeps the parent turn active and requires it to process results. This does not wake a parent turn that has ended. Progress is queried through tools; large events are marked truncated.
 - The daemon is local to one Unix account. Clients under that account share its agent inventory. It is not a multi-user or network service.
 - DSH is evolving. Re-run live tests after upgrading it; this version extends the exported SDK server class and uses the agent registry.
 

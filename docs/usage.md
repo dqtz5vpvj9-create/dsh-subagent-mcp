@@ -12,7 +12,22 @@
 | `dsh_interrupt` | Cancels active and queued input, waits for idle, and flushes history. |
 | `dsh_close` | Releases the runtime and closes that bridge agent while retaining history. |
 
-The 25-second wait limit applies only to one observation call, not to the DSH task. When it expires, work keeps running. There is no task deadline implied by this window; the parent can do other work and check progress when needed.
+`dsh_wait` subscribes to root state changes and returns immediately on completion,
+error, interruption, or closure. Its 25-second limit is an observation window,
+not a task deadline. `wait_outcome: timeout` and `next_action: continue_waiting`
+mean the parent must keep supervising the task. Completion between calls remains
+available from persisted state, so the next wait returns it immediately.
+
+The parent should do independent work while the child runs, then keep calling
+`dsh_wait` until the child settles. On completion, verify the artifacts and
+continue the next authorized step. A child's final answer does not complete the
+parent's integration or deployment work.
+
+There is no unsolicited wake-up of an ended parent turn. Completion is delivered
+through a pending tool response. The skill therefore requires the parent to keep
+its turn active while dependent work remains. Explicit background-only requests
+can detach, but require a later parent turn to retrieve and process the result.
+Cancelling a wait only removes its observer; use `dsh_interrupt` to stop the child.
 
 Pass the returned `id` as `agent_id` in later calls. A busy agent rejects follow-ups: interrupt it first when changing direction. Keep the agent open while further questions are expected; closing it disables follow-ups through the bridge.
 

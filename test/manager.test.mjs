@@ -76,3 +76,61 @@ test('legacy conversations retain their original composition on resume',async t=
   assert.equal(m.get(legacy.id).preset,null);
   assert.equal(m.get(legacy.id).workspace_id,'workspace-fixture');
 });
+
+test('completion releases the waiting parent, which continues in the same session',async t=>{
+ const {m,dir}=setup(t);
+ const a=await m.start({cwd:dir,task:'first'});await tick();
+ const parent=m.wait(a.id,25).then(async result=>{
+  assert.equal(result.status,'completed');assert.equal(result.wait_outcome,'settled');
+  assert.equal(result.next_action,'review_and_continue');assert.equal(result.answer,'first result');
+  return m.followup(a.id,'verify first result');
+ });
+ m.live.get(a.id).finish('first result');
+ const resumed=await parent;
+ assert.equal(resumed.id,a.id);assert.equal(resumed.status,'running');
+ assert.equal(m.live.get(a.id).calls.filter(([method])=>method==='session/prompt').length,2);
+ assert.equal(m.listenerCount('state:'+a.id),0);
+});
+test('timeout remains pending work and completion between waits is not lost',async t=>{
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();
+ const timed=await m.wait(a.id,0);
+ assert.equal(timed.wait_outcome,'timeout');assert.equal(timed.next_action,'continue_waiting');
+ m.live.get(a.id).finish('finished between calls');
+ const done=await m.wait(a.id,25);
+ assert.equal(done.wait_outcome,'settled');assert.equal(done.answer,'finished between calls');
+});
+test('text and descendant completion do not settle the root waiter; error does',async t=>{
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();
+ let returned=false;const waiting=m.wait(a.id,25).then(x=>{returned=true;return x;});
+ const rt=m.live.get(a.id);
+ rt.emit('notification','session.text',{sessionId:a.id,chunk:{text:'not final'}});
+ rt.emit('notification','session.status',{sessionId:'descendant',status:'idle'});
+ await tick();assert.equal(returned,false);
+ rt.emit('exit',new Error('runtime failure'));
+ const done=await waiting;assert.equal(done.status,'error');assert.equal(done.next_action,'handle_error');
+});
+test('cancelling a wait detaches the observer without cancelling the child',async t=>{
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();
+ const controller=new AbortController();const waiting=m.wait(a.id,25,controller.signal);
+ controller.abort(new Error('parent wait cancelled'));
+ await assert.rejects(waiting,/parent wait cancelled/);
+ assert.equal(m.get(a.id).status,'running');assert.equal(m.listenerCount('state:'+a.id),0);
+ const next=m.wait(a.id,25);await m.interrupt(a.id);
+ assert.equal((await next).next_action,'respect_stop');
+});
+
+test('MCP wait response delivers completion and permits a dependent parent call',async t=>{
+ const {Client}=await import('@modelcontextprotocol/sdk/client/index.js');
+ const {InMemoryTransport}=await import('@modelcontextprotocol/sdk/inMemory.js');
+ const {makeServer}=await import('../src/server.mjs');
+ const {m,dir}=setup(t);const server=makeServer(m),client=new Client({name:'parent',version:'1'});
+ const [a,b]=InMemoryTransport.createLinkedPair();await server.connect(a);await client.connect(b);
+ t.after(async()=>{await client.close();await server.close();});
+ const call=async(name,args)=>{const r=await client.callTool({name,arguments:args});assert.equal(r.isError,undefined);return JSON.parse(r.content[0].text);};
+ const agent=await call('dsh_start',{cwd:dir,task:'produce evidence'});await tick();
+ const pending=call('dsh_wait',{agent_id:agent.id,seconds:25});await tick();
+ m.live.get(agent.id).finish('evidence ready');
+ const done=await pending;assert.equal(done.answer,'evidence ready');assert.equal(done.next_action,'review_and_continue');
+ const next=await call('dsh_followup',{agent_id:agent.id,task:'check evidence'});
+ assert.equal(next.status,'running');assert.equal(next.id,agent.id);
+});

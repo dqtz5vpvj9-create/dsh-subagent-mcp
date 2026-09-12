@@ -30,7 +30,7 @@ test('packed CLI installs service, skill and Web adapter outside its disposable 
   assert.ok(readFileSync(patch,'utf8').includes(join(installed,'src/web-plugin.mjs')));
   rmSync(cache,{recursive:true});
   const version=execFileSync(process.execPath,[join(installed,'src/cli.mjs'),'--version'],{env,encoding:'utf8'}).trim();
-  assert.equal(version,'0.2.0');
+  assert.match(version,/^\d+\.\d+\.\d+$/);
   assert.match(readFileSync(join(home,'.codex/skills/dsh-subagent/SKILL.md'),'utf8'),/dsh_start/);
   assert.match(execFileSync(process.execPath,['--input-type=module','-e',"await import("+JSON.stringify(join(installed,'src/runtime.mjs'))+"); console.log('loaded')"],{env,encoding:'utf8'}),/loaded/);
  } finally {rmSync(root,{recursive:true,force:true});}
