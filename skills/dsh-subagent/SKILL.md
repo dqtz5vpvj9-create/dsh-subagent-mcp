@@ -24,9 +24,11 @@ will follow completion. Preserve these across context compaction.
 
 The bridge does not wake an ended Codex turn. Do not end your turn with a promise
 of a future callback while required children are still running. Keep the parent
-turn active: do independent work when available, then call `dsh_wait`. It holds a
-pending tool call and returns as soon as the root agent settles. If it times out,
-continue waiting; a 25-second observation window is not a task deadline. Give
+turn active: do independent work when available, then call `dsh_wait` without `seconds`. It holds a
+pending tool call and returns as soon as the root agent settles. It has no
+server-side timeout by default. Set `seconds` only when an explicit
+bounded wait is useful. If that wait times out, continue waiting; it is not a
+task deadline. Give
 concise progress updates between waits, without asking the user to remind you.
 
 On `completed`, check the finish reason and actual artifacts, then immediately
@@ -44,7 +46,7 @@ recover the exact agent ID and inspect its state before continuing.
 
 - Use `dsh_status` for lifecycle state, visible partial output, answer and finish reason.
 - Use `dsh_events` with the previous `next_cursor` as `after` for incremental tool activity. Large events may be truncated.
-- Use `dsh_wait` for completion delivery. `wait_outcome: timeout` with `next_action: continue_waiting` means the child still needs supervision. `wait_outcome: settled` returns its final status and answer. Repeated waits are required when the parent has no independent work left; avoid tight `dsh_status` polling.
+- Use `dsh_wait` for completion delivery. `wait_outcome: timeout` with `next_action: continue_waiting` means the child still needs supervision. `wait_outcome: settled` returns its final status and answer. Omit `seconds` for event-driven completion without periodic timeout returns; avoid tight `dsh_status` polling. The MCP client may still impose its own request timeout.
 - When the agent is idle, call `dsh_followup` on the same ID. Do not create a replacement agent for a follow-up question.
 - If it is busy and the user redirects or stops it, call `dsh_interrupt`. Wait for acknowledgement before sending the replacement task. A timeout is not confirmation that work stopped.
 

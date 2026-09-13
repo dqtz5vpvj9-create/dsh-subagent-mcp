@@ -111,7 +111,7 @@ test('text and descendant completion do not settle the root waiter; error does',
 });
 test('cancelling a wait detaches the observer without cancelling the child',async t=>{
  const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();
- const controller=new AbortController();const waiting=m.wait(a.id,25,controller.signal);
+ const controller=new AbortController();const waiting=m.wait(a.id,undefined,controller.signal);
  controller.abort(new Error('parent wait cancelled'));
  await assert.rejects(waiting,/parent wait cancelled/);
  assert.equal(m.get(a.id).status,'running');assert.equal(m.listenerCount('state:'+a.id),0);
@@ -128,9 +128,34 @@ test('MCP wait response delivers completion and permits a dependent parent call'
  t.after(async()=>{await client.close();await server.close();});
  const call=async(name,args)=>{const r=await client.callTool({name,arguments:args});assert.equal(r.isError,undefined);return JSON.parse(r.content[0].text);};
  const agent=await call('dsh_start',{cwd:dir,task:'produce evidence'});await tick();
- const pending=call('dsh_wait',{agent_id:agent.id,seconds:25});await tick();
+ t.mock.timers.enable({apis:['setTimeout']});
+ let returned=false;
+ const pending=call('dsh_wait',{agent_id:agent.id}).then(result=>{returned=true;return result;});await tick();
+ t.mock.timers.tick(26000);await tick();assert.equal(returned,false);
  m.live.get(agent.id).finish('evidence ready');
  const done=await pending;assert.equal(done.answer,'evidence ready');assert.equal(done.next_action,'review_and_continue');
+ const bounded=await call('dsh_wait',{agent_id:agent.id,seconds:60});assert.equal(bounded.wait_outcome,'settled');
  const next=await call('dsh_followup',{agent_id:agent.id,task:'check evidence'});
  assert.equal(next.status,'running');assert.equal(next.id,agent.id);
+});
+
+
+test('default wait stays pending beyond the old timeout until root completion',async t=>{
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'long task'});await tick();
+ t.mock.timers.enable({apis:['setTimeout']});
+ let returned=false;const waiting=m.wait(a.id).then(result=>{returned=true;return result;});
+ t.mock.timers.tick(3600000);await tick();assert.equal(returned,false);
+ m.live.get(a.id).finish('long task done');
+ const done=await waiting;assert.equal(done.wait_outcome,'settled');assert.equal(done.answer,'long task done');
+ assert.equal(m.listenerCount('state:'+a.id),0);
+});
+
+test('explicit wait deadline returns timeout and releases its observer',async t=>{
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();
+ t.mock.timers.enable({apis:['setTimeout']});
+ let returned=false;const waiting=m.wait(a.id,60).then(result=>{returned=true;return result;});
+ t.mock.timers.tick(59000);await tick();assert.equal(returned,false);
+ t.mock.timers.tick(1000);
+ const done=await waiting;assert.equal(done.wait_outcome,'timeout');assert.equal(done.status,'running');
+ assert.equal(m.listenerCount('state:'+a.id),0);
 });

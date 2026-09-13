@@ -29,7 +29,7 @@ export class Manager extends EventEmitter {
     const rows=this.db.prepare('SELECT * FROM events WHERE agent=? AND seq>? ORDER BY seq LIMIT ?').all(id,after,limit);
     return {events:rows.map(r=>({...r,data:JSON.parse(r.data)})),next_cursor:rows.at(-1)?.seq ?? after};
   }
-  wait(id,seconds=25,signal) {
+  wait(id,seconds,signal) {
     const active=a=>['starting','running','interrupting'].includes(a.status);
     const result=(a,outcome)=>({...a,wait_outcome:outcome,next_action:active(a)?'continue_waiting':a.status==='completed'?'review_and_continue':a.status==='error'?'handle_error':'respect_stop'});
     const initial=this.get(id);
@@ -40,7 +40,7 @@ export class Manager extends EventEmitter {
       const cleanup=()=>{clearTimeout(timer);this.off(event,onState);signal?.removeEventListener('abort',onAbort);};
       const onState=a=>{if(!active(a)){cleanup();resolve(result(a,'settled'));}};
       const onAbort=()=>{cleanup();reject(signal.reason??new Error('Wait cancelled'));};
-      const timer=setTimeout(()=>{cleanup();resolve(result(this.get(id),'timeout'));},seconds*1000);
+      const timer=seconds===undefined?undefined:setTimeout(()=>{cleanup();resolve(result(this.get(id),'timeout'));},seconds*1000);
       this.on(event,onState);
       signal?.addEventListener('abort',onAbort,{once:true});
     });

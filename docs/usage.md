@@ -7,19 +7,20 @@
 | `dsh_status` | Returns state, visible partial text, answer, and `finish_reason`. |
 | `dsh_events` | Returns chronological progress after a cursor. |
 | `dsh_list` | Finds agents from current and previous client sessions. |
-| `dsh_wait` | Waits for up to 25 seconds and returns current state. |
+| `dsh_wait` | Waits until the root agent settles; optional `seconds` bounds the wait. |
 | `dsh_followup` | Continues an idle agent, restoring its persisted DSH conversation if necessary. |
 | `dsh_interrupt` | Cancels active and queued input, waits for idle, and flushes history. |
 | `dsh_close` | Releases the runtime and closes that bridge agent while retaining history. |
 
 `dsh_wait` subscribes to root state changes and returns immediately on completion,
-error, interruption, or closure. Its 25-second limit is an observation window,
-not a task deadline. `wait_outcome: timeout` and `next_action: continue_waiting`
+error, interruption, or closure. Omit `seconds` to wait without a server-side
+timeout. Supply `seconds` only for an explicit observation window, not a task
+deadline. `wait_outcome: timeout` and `next_action: continue_waiting`
 mean the parent must keep supervising the task. Completion between calls remains
 available from persisted state, so the next wait returns it immediately.
 
-The parent should do independent work while the child runs, then keep calling
-`dsh_wait` until the child settles. On completion, verify the artifacts and
+The parent should do independent work while the child runs, then call
+`dsh_wait` without `seconds` to await the child settling. On completion, verify the artifacts and
 continue the next authorized step. A child's final answer does not complete the
 parent's integration or deployment work.
 
@@ -49,3 +50,8 @@ Follow-ups retain the original preset. Existing sessions created before preset
 support keep their SDK composition and report `preset: null`; they are not
 silently converted mid-conversation. A daemon upgrade requires interrupting active
 work first, then explicitly continuing the same agent IDs after restart.
+
+The MCP client may impose its own request timeout independently of the bridge.
+Configure that timeout to cover the expected task duration when using an
+unbounded wait. Cancelling a wait detaches the observer without stopping the
+agent; use `dsh_interrupt` to stop the work itself.
