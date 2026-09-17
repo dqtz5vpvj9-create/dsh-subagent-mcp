@@ -6,7 +6,8 @@
 - Cap DeepSeek completion at 128k tokens so standard-preset compaction runs before the request limit.
 - Report `context_tokens` and `context_limit_tokens`, settle overflowed turns as `context_exhausted` with the last completed answer, and refuse follow-ups that cannot fit.
 - Name sessions in DSH Web from `name` or the task's first line, and add `dsh_rename`.
-- Keep observing an attached Web session after a DSH session error instead of detaching it.
+- Keep observing an attached Web session after a DSH session error instead of detaching it, and keep terminal `error` and `closed` states when an attached session is observed again.
+- Make the companion skill client-neutral so Claude Code can use it as well as Codex.
 
 ## 0.3.2
 

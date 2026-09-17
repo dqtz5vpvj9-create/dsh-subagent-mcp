@@ -5,13 +5,13 @@ description: Delegate tasks to persistent DeepSeek Harness agents through the ds
 
 # DSH subagent
 
-Use the installed `dsh_subagent` MCP tools. This runs the DSH harness with its own tools and conversation, not merely a DeepSeek model inside Codex. Tool prefixes depend on the client; identify tools by their `dsh_*` names.
+Use the installed `dsh_subagent` MCP tools. This runs the DSH harness with its own tools and conversation, not merely a DeepSeek model inside the parent agent. It works from Codex, Claude Code, or any other MCP client. Tool prefixes depend on the client; identify tools by their `dsh_*` names.
 
 ## Delegate and retain context
 
-Call `dsh_start` with an explicit absolute `cwd`, a short descriptive `name`, and a self-contained task: objective, relevant context, allowed files/actions, constraints and expected evidence. The child does not inherit the Codex transcript. The name becomes the session title in DSH Web, where many agents share one workspace; without it the bridge uses the task's first line. Use `dsh_rename` to correct a name later. Respect the user's model choice; otherwise the server defaults to DeepSeek V4 Flash with `max` effort.
+Call `dsh_start` with an explicit absolute `cwd`, a short descriptive `name`, and a self-contained task: objective, relevant context, allowed files/actions, constraints and expected evidence. The child does not inherit the parent transcript. The name becomes the session title in DSH Web, where many agents share one workspace; without it the bridge uses the task's first line. Use `dsh_rename` to correct a name later. Respect the user's model choice; otherwise the server defaults to DeepSeek V4 Flash with `max` effort.
 
-Set `permission: read-only` for investigation. Use `workspace-write` for authorized changes inside `cwd`: its sandbox denies writes elsewhere, gives the shell a private `/tmp`, and cannot ask for escalation. Network access, such as adb over TCP, still works. DSH permissions are independent of Codex permissions; select no broader access than the parent task permits. `danger-full-access` requires authorization for that access. Missing approval support is not permission to escalate.
+Set `permission: read-only` for investigation. Use `workspace-write` for authorized changes inside `cwd`: its sandbox denies writes elsewhere, gives the shell a private `/tmp`, and cannot ask for escalation. Network access, such as adb over TCP, still works. DSH permissions are independent of the parent client's permissions; select no broader access than the parent task permits. `danger-full-access` requires authorization for that access. Missing approval support is not permission to escalate.
 
 Keep the returned `id` and pass it as `agent_id` on later calls. Starting returns immediately and is not proof that the model task succeeded. For parallel agents, divide write ownership so they do not edit the same files concurrently.
 
@@ -22,7 +22,7 @@ into the authorized parent work. Starting a child is not a completed handoff.
 Track its agent ID, objective, expected evidence, and the parent action that
 will follow completion. Preserve these across context compaction.
 
-The bridge does not wake an ended Codex turn. Do not end your turn with a promise
+The bridge does not wake an ended parent turn. Do not end your turn with a promise
 of a future callback while required children are still running. Keep the parent
 turn active: do independent work when available, then call `dsh_wait` without `seconds`. It holds a
 pending tool call and returns as soon as the root agent settles. It has no
@@ -90,7 +90,7 @@ Use `dsh_list` to recover an earlier agent ID, matching the workspace and task r
 
 Distinguish `completed` from `error`, `context_exhausted` and `interrupted`, and check `finish_reason`. A final text or successful MCP response alone is not task acceptance. Verify important claims against changed files, command output or test artifacts. Include the agent ID when it helps the user continue the work.
 
-If the MCP tools are unavailable, say so rather than silently substituting a one-shot shell command. Installation is documented in the repository README. This skill does not itself install services, change credentials, or authorize additional tasks. DSH activity appears through MCP rather than Codex's native `/agent` UI.
+If the MCP tools are unavailable, say so rather than silently substituting a one-shot shell command. Installation is documented in the repository README. This skill does not itself install services, change credentials, or authorize additional tasks. DSH activity appears through MCP rather than the client's native subagent UI.
 
 ## Workspace and agent preset
 
