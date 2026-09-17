@@ -49,20 +49,20 @@ test('service restart preserves unfinished agents without replaying prompts',asy
   }finally{await restored.shutdown();}
 });
 
-test('new agents use minimal and keep explicit presets across runtime restart',async t=>{
+test('new agents use standard and keep explicit presets across runtime restart',async t=>{
   const{m,dir,config}=setup(t);
   const a=await m.start({cwd:dir,task:'default'});
-  const b=await m.start({cwd:dir,task:'explicit',preset:'standard'});
+  const b=await m.start({cwd:dir,task:'explicit',preset:'minimal'});
   await tick();
-  assert.equal(m.live.get(a.id).calls[0][1].preset,'minimal');
-  assert.equal(m.live.get(b.id).calls[0][1].preset,'standard');
-  assert.equal(m.get(a.id).preset,'minimal');
+  assert.equal(m.live.get(a.id).calls[0][1].preset,'standard');
+  assert.equal(m.live.get(b.id).calls[0][1].preset,'minimal');
+  assert.equal(m.get(a.id).preset,'standard');
   assert.equal(m.get(a.id).workspace_id,'workspace-fixture');
   await m.shutdown();
   const restored=new Manager(config,Fake);
   try {
     await restored.followup(b.id,'continue');
-    assert.equal(restored.live.get(b.id).calls[0][1].preset,'standard');
+    assert.equal(restored.live.get(b.id).calls[0][1].preset,'minimal');
     assert.equal(restored.live.get(b.id).calls[0][1].resume,true);
   } finally {await restored.shutdown();}
 });

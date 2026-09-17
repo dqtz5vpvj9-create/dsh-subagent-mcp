@@ -22,7 +22,9 @@ export function runtimeConfig(state=stateDirectory()) {
     - id: agent-presets
       name: '@deepseek-ai/dsh-agent-presets'
       config:
-        default: minimal
+        default: standard
+    - id: subagent-model-selection-settings
+      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
     - id: codex-subagent-rpc
       name: ${JSON.stringify(join(projectRoot,'src/dsh-plugin.mjs'))}
 `;

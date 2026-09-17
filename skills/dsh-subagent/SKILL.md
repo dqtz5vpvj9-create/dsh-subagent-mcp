@@ -44,9 +44,39 @@ recover the exact agent ID and inspect its state before continuing.
 
 ## Observe and continue
 
-- Use `dsh_status` for lifecycle state, visible partial output, answer and finish reason.
-- Use `dsh_events` with the previous `next_cursor` as `after` for incremental tool activity. Large events may be truncated.
-- Use `dsh_wait` for completion delivery. `wait_outcome: timeout` with `next_action: continue_waiting` means the child still needs supervision. `wait_outcome: settled` returns its final status and answer. Omit `seconds` for event-driven completion without periodic timeout returns; avoid tight `dsh_status` polling. The MCP client may still impose its own request timeout.
+### Existing external DSH Web sessions
+
+Use `dsh_attach` with the exact `session_id` (including `session-` when present)
+and the user's authenticated `web_url` to connect to an existing ordinary Web
+session. This creates a bridge registration, not a new DSH conversation. It
+retains the session's original cwd, preset, model and permissions. Attaching does
+not grant permission to expand its task or interrupt unrelated work. Web-owned
+subagent children must be contacted through their parent.
+
+Keep the returned `id` for the usual status, events, wait, followup and interrupt
+tools. `dsh_followup` requires idle. For communication while the session is busy,
+use `dsh_send`: `mode: queue` delivers at the next turn; `mode: steer` delivers
+at the next step without cancelling the current turn. Choose steer only when
+the user wants input delivered during the active work. An accepted receipt is
+not a reply; inspect events or status for the actual response. Waiting for the
+session to settle may also wait for its original task. Observing an existing
+session does not make all of that task part of the parent's assignment.
+
+`dsh_close` only detaches an external session; it does not stop the Web agent.
+Bridge restarts reconnect on observation without replaying prompts. Web must
+remain available. Credentials are exchanged for a private cookie in bridge state
+and omitted from tool results. Do not put launch tokens in source, test fixtures,
+reports or chat replies. Reattach with a fresh launch URL if authentication expires.
+External servers require HTTPS; loopback HTTP is supported.
+
+If these new tools are absent from the client's cached tool list after upgrading,
+refresh its MCP connection or reconnect the client.
+
+### Bridge agent lifecycle
+
+- Use `dsh_status` sparingly for compact lifecycle state; it does not include answer or partial text by default.
+- Use `dsh_events` with the previous `next_cursor` as `after`. Default events contain only new assistant-visible text. Set `include_tool_events:true` for tool summaries; use a specific `event_id` together with that flag for one full tool record. Pass continuation cursors unchanged so large events resume without loss or duplication.
+- Use `dsh_wait` for completion delivery. Omit `seconds` for persistent work. `wait_outcome: timeout` with `next_action: continue_waiting` means the child still needs supervision. `wait_outcome: settled` returns the final answer once and never promotes partial progress to an answer. Use `legacy:true` only for compatibility with old full state payloads.
 - When the agent is idle, call `dsh_followup` on the same ID. Do not create a replacement agent for a follow-up question.
 - If it is busy and the user redirects or stops it, call `dsh_interrupt`. Wait for acknowledgement before sending the replacement task. A timeout is not confirmation that work stopped.
 
@@ -66,10 +96,11 @@ If the MCP tools are unavailable, say so rather than silently substituting a one
 The process directory alone does not establish sidebar membership. Status returns
 `workspace_id` once initialization finishes.
 
-New agents default to `preset: "minimal"` (极简模式). This mounts DSH's actual
-preset before the first prompt: a fixed system prompt and the persistent shell
-as its only tool. Pass `preset` explicitly to choose another installed preset;
-this is separate from the launch profile and the permission preset.
+New agents default to `preset: "standard"`. DSH's standard preset includes
+context compaction and tool-result pruning, and mounts before the first prompt.
+Pass `preset: "minimal"` explicitly only when a fixed prompt and a single
+persistent shell without automatic compaction are intended. The preset is
+separate from the launch profile and permission preset.
 
 Follow-ups retain the original preset. Existing sessions created before preset
 support keep their SDK composition and report `preset: null`; they are not

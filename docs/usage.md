@@ -3,11 +3,13 @@
 
 | Tool | What it does |
 |---|---|
-| `dsh_start` | Starts asynchronously and returns a stable `id`; requires an absolute `cwd`. |
-| `dsh_status` | Returns state, visible partial text, answer, and `finish_reason`. |
-| `dsh_events` | Returns chronological progress after a cursor. |
+| `dsh_start` | Starts asynchronously and returns a compact receipt; requires an absolute `cwd`. |
+| `dsh_attach` | Connects to an existing DSH Web session using its exact session ID and authenticated launch URL. |
+| `dsh_send` | Queues or steers a message into an attached external session, including while it is busy. |
+| `dsh_status` | Returns compact lifecycle state; use `legacy:true` for the complete historical state. |
+| `dsh_events` | Returns assistant-visible text after a cursor; set `include_tool_events:true` before using `event_id` for a targeted full tool event. |
 | `dsh_list` | Finds agents from current and previous client sessions. |
-| `dsh_wait` | Waits until the root agent settles; optional `seconds` bounds the wait. |
+| `dsh_wait` | Waits until the root agent settles; omit `seconds` for persistent work. The settled response contains the final answer once. |
 | `dsh_followup` | Continues an idle agent, restoring its persisted DSH conversation if necessary. |
 | `dsh_interrupt` | Cancels active and queued input, waits for idle, and flushes history. |
 | `dsh_close` | Releases the runtime and closes that bridge agent while retaining history. |
@@ -41,10 +43,11 @@ Model, provider, effort and permission are selected at creation. Defaults are de
 The process directory alone does not establish sidebar membership. Status returns
 `workspace_id` once initialization finishes.
 
-New agents default to `preset: "minimal"` (极简模式). This mounts DSH's actual
-preset before the first prompt: a fixed system prompt and the persistent shell
-as its only tool. Pass `preset` explicitly to choose another installed preset;
-this is separate from the launch profile and the permission preset.
+New agents default to `preset: "standard"`. DSH's standard preset includes
+context compaction and tool-result pruning, and mounts before the first prompt.
+Pass `preset: "minimal"` explicitly only when a fixed prompt and a single
+persistent shell without automatic compaction are intended. The preset is
+separate from the launch profile and permission preset.
 
 Follow-ups retain the original preset. Existing sessions created before preset
 support keep their SDK composition and report `preset: null`; they are not
@@ -55,3 +58,32 @@ The MCP client may impose its own request timeout independently of the bridge.
 Configure that timeout to cover the expected task duration when using an
 unbounded wait. Cancelling a wait detaches the observer without stopping the
 agent; use `dsh_interrupt` to stop the work itself.
+
+## Connect to an existing Web session
+
+Call `dsh_attach` with `session_id` and `web_url`. Keep the `session-` prefix if
+it is part of the original ID. Supply the authenticated launch URL privately;
+the bridge exchanges its token for a cookie stored in a mode-0600 file under
+`web-auth` in bridge state. Tool results contain only the clean server origin.
+HTTP is supported on loopback; remote servers require HTTPS.
+
+The returned `id` works with the existing observation and lifecycle tools.
+The external session keeps its cwd, model, preset and permissions. No second
+SDK runtime or replacement conversation is created. Ordinary Web sessions are
+supported; Web-owned subagent children retain their parent's delivery routing.
+
+Use `dsh_followup` when idle; it returns a receipt, so use `dsh_wait` for the final
+answer. Use `dsh_send` with `mode: "queue"` to deliver
+after the current turn, or `mode: "steer"` to deliver at the next step. A send
+receipt proves admission, not model completion. Status and events expose the
+response; `dsh_wait` waits for the session, which may include ongoing work that
+predates the bridge connection. The bridge does not answer Web approvals or
+user questions on anyone's behalf.
+
+`dsh_interrupt` removes observed queued input and requests cancellation, then
+waits for confirmation. `dsh_close` only detaches the observer and removes its
+saved cookie; the external Web session and its history remain intact. A bridge
+restart does not interrupt external work. The next observation reconnects,
+recovers missed history and never automatically resends a prompt. Reattach with
+a fresh launch URL when the cookie expires. Refresh the MCP connection after
+upgrading so the client discovers `dsh_attach` and `dsh_send`.

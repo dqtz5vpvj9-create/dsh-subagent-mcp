@@ -22,10 +22,11 @@ Give Codex a DeepSeek coding agent that can read your repo, edit files, and run 
 
 | | What you get |
 | :--- | :--- |
-| **Minimal by default** | DSH's native minimal preset, mounted before the first task: a fixed system prompt and persistent shell. |
+| **Standard by default** | DSH's native standard preset, including automatic context compaction and tool-result pruning. |
 | **Live in your browser** | With the Web adapter installed, tool activity and streamed replies arrive in DSH Web without refreshing. |
 | **Completion handoff** | The skill keeps the parent waiting for dependent tasks, then checking artifacts and continuing authorized work. |
 | **A conversation that continues** | Ask the same agent to investigate, implement, or verify. Its earlier context stays with it. |
+| **Existing Web sessions** | Attach a session started outside the bridge, read its progress, and queue or steer messages into the same conversation. |
 | **Interrupt and redirect** | Stop the current task, then give the agent a new direction. |
 | **Workspaces that make sense** | Sessions are registered under their working directory in DSH. |
 | **Work survives a disconnect** | The local service keeps running when the Codex client closes. Reconnect to check progress. |
@@ -87,17 +88,23 @@ You → Codex
 Stop it. We've changed the approach. Wait until it stops, then give it this plan: …
 ```
 
-## Minimal by default, visible in DSH Web
+## Standard by default, visible in DSH Web
 
-New subagents use DSH's **minimal preset** by default. Its complete system prompt is:
+New subagents use DSH's **standard preset** by default, including automatic context compaction and tool-result pruning. It is mounted before the first task. Follow-ups retain the original preset, including across restarts.
 
-> You are a helpful software engineer assistant.
-
-The preset supplies a persistent shell as its only tool. It is mounted before the first task, and follow-ups keep the same preset. Pass `preset` explicitly to choose another installed preset. Older sessions retain their original configuration.
+Pass `preset: "minimal"` explicitly for the fixed-prompt, single-shell preset without automatic compaction. Existing sessions keep their original configuration.
 
 Sessions are registered under their working directory in DSH. With the Web adapter installed, **the DSH Web conversation receives tool activity and streamed replies without a manual refresh**. You can watch a task delegated from Codex in the browser; when following the latest output, long replies scroll into view as they arrive.
 
 ## Go further
+
+The MCP bridge returns compact receipts for `dsh_start` and `dsh_followup`.
+`dsh_status` and `dsh_list` are compact lifecycle views, while `dsh_wait`
+returns the final answer once after settlement. Omit `seconds` for persistent
+work. `dsh_events` defaults to new assistant-visible text; request tool
+summaries explicitly and use an `event_id` for one full tool record. Large
+events return a continuation cursor. Use `legacy: true` only for compatibility
+with older full state payloads.
 
 [Follow-ups, progress and cancellation](docs/usage.md) · [Permissions and architecture](docs/architecture.md) · [Service management](docs/operations.md) · [Validation](docs/validation.md)
 

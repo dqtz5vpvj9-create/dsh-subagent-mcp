@@ -9,30 +9,41 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {z} from 'zod';
 import {Manager} from './manager.mjs';
 import {runtimeConfig} from './config.mjs';
+import {receipt,status,list,wait as projectWait} from './projection.mjs';
 
 const state=process.env.DSH_SUBAGENT_STATE ?? join(homedir(),'.local/state/dsh-subagent-mcp');
 const socketPath=join(state,'server.sock');
-const instructions='Completion handoff: retain every delegated agent ID and keep the parent task active until its required children settle and their results are processed. When no independent work remains, call dsh_wait without seconds to await completion; an explicitly requested timeout means continue waiting, never task completion. A settled result is delivered through the pending tool call. This bridge does not wake an ended parent turn. On completed, verify artifacts and immediately continue the already authorized parent work; on error diagnose, and on interruption respect the stop. Delegate bounded tasks with dsh_start and retain agent_id. Poll dsh_status/dsh_events for progress; dsh_wait has no timeout by default; seconds optionally bounds a single wait. After idle, dsh_followup continues the SAME DSH session. To redirect active work, dsh_interrupt first, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and real artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
+const instructions='Completion handoff: retain every delegated agent ID and keep the parent task active until its required children settle and their results are processed. When no independent work remains, call dsh_wait without seconds to await completion; an explicitly requested timeout means continue waiting, never task completion. A settled result is delivered through the pending tool call. This bridge does not wake an ended parent turn. On completed, verify artifacts and immediately continue the already authorized parent work; on error diagnose, and on interruption respect the stop. Delegate bounded tasks with dsh_start and retain agent_id. Prefer dsh_wait over status polling when no independent work remains; use dsh_events only for an explicit progress or failure question. dsh_wait has no timeout by default; seconds optionally bounds a single wait. After idle, dsh_followup continues the SAME DSH session. To redirect active work, dsh_interrupt first, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and real artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
 
 export function makeServer(manager) {
   const server=new McpServer({name:'dsh-subagent-mcp',version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version},{instructions});
-  const id={agent_id:z.string().uuid()};
+  const id={agent_id:z.string().min(1)};
+  const observe=async id=>manager.get(id).external?manager.external.status(id):manager.get(id);
   const register=(name,description,schema,fn,readOnlyHint=false)=>server.registerTool(name,{description,inputSchema:schema,annotations:{readOnlyHint,destructiveHint:!readOnlyHint,openWorldHint:true}},async (args,extra)=>{
     try {return {content:[{type:'text',text:JSON.stringify(await fn(args,extra))}]};}
     catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
   });
-  register('dsh_start','Start an independent DSH agent asynchronously. Returns an agent ID immediately. Set cwd explicitly; sessions are grouped under that workspace. Default preset minimal (极简模式). Default workspace-write; read-only enforces a sandbox. danger-full-access needs explicit task authorization.',{
+  register('dsh_start','Start an independent DSH agent asynchronously. Returns an agent ID immediately. Set cwd explicitly; sessions are grouped under that workspace. Default preset standard, including automatic context compaction. Default workspace-write; read-only enforces a sandbox. danger-full-access needs explicit task authorization.',{
     task:z.string().min(1),cwd:z.string(),name:z.string().optional(),
     model:z.string().optional(),provider:z.string().optional(),effort:z.string().optional(),preset:z.string().min(1).optional(),
-    permission:z.enum(['read-only','workspace-write','danger-full-access']).optional(),
-  },a=>manager.start(a));
-  register('dsh_status','Read status, partial visible output, final answer and finish reason.',id,a=>manager.get(a.agent_id),true);
-  register('dsh_list','List persistent DSH agents, including those started by earlier Codex sessions.',{},()=>manager.list(),true);
-  register('dsh_events','Read chronological progress/tool events after a cursor. next_cursor supports incremental polling.',{...id,after:z.number().int().nonnegative().default(0),limit:z.number().int().min(1).max(100).default(30)},a=>manager.events(a.agent_id,a.after,a.limit),true);
-  register('dsh_followup','Continue an idle DSH agent with its original conversation. Busy agents must be interrupted first. Also resumes persisted sessions after service restart.',{...id,task:z.string().min(1)},a=>manager.followup(a.agent_id,a.task));
-  register('dsh_interrupt','Cancel current execution and queued input; return only after DSH reaches idle. Keeps conversation and any files already changed.',id,a=>manager.interrupt(a.agent_id));
-  register('dsh_close','Release an agent runtime and mark it closed. Retains its history and files.',id,a=>manager.close(a.agent_id));
-  register('dsh_wait','Await completion through a pending tool call with no timeout by default, returning immediately when the root agent settles. Set seconds only when a bounded wait is wanted. A timeout is NOT completion: keep waiting if parent work depends on this agent. On completed, verify artifacts and continue authorized parent work. Does not wake an ended parent turn.',{...id,seconds:z.number().min(0).max(2147483.647).optional()},(a,extra)=>manager.wait(a.agent_id,a.seconds,extra.signal),true);
+    permission:z.enum(['read-only','workspace-write','danger-full-access']).optional(),legacy:z.boolean().default(false),
+  },a=>manager.start(a).then(value=>a.legacy?value:receipt(value,'start')));
+  register('dsh_attach','Connect to an existing ordinary DSH Web session without creating or restarting it. Keeps its preset and permissions. Supply the exact session ID and authenticated Web launch URL. Credentials are stored privately and omitted from results.',{
+    session_id:z.string().min(1),web_url:z.string().url(),
+  },a=>manager.serial(a.session_id,()=>manager.external.attach(a)).then(value=>status(value)));
+  register('dsh_send','Send to an attached external Web session, including while busy. Queue waits for the next turn; steer delivers at the next step. Preserves the current task and session permissions.',{
+    ...id,task:z.string().min(1),mode:z.enum(['queue','steer']).default('queue'),
+  },a=>manager.serial(a.agent_id,()=>{
+    if(!manager.get(a.agent_id).external)throw new Error('dsh_send requires an attached external Web session; use dsh_followup for bridge agents');
+    return manager.external.send(a.agent_id,a.task,a.mode).then(value=>receipt(value,'send'));
+  }));
+  register('dsh_status','Read compact lifecycle status. Use legacy:true only when the complete historical state is required.',{...id,legacy:z.boolean().default(false)},async a=>status(await observe(a.agent_id),{full:a.legacy}),true);
+  register('dsh_list','List persistent DSH agents in compact form. Use legacy:true for complete historical state.',{legacy:z.boolean().default(false)},async a=>list(manager.list(),{full:a.legacy}),true);
+  register('dsh_events','Read new assistant-visible text after a cursor. Tool events are summaries only when include_tool_events:true; pass event_id to read one tool event in full. max_chars is a response budget. If a large event is split, pass continuation_cursor as after to resume without loss or duplication.',{...id,after:z.union([z.number().int().nonnegative(),z.string().min(1)]).default(0),limit:z.number().int().min(1).max(100).default(30),max_chars:z.number().int().min(256).max(100000).default(12000),include_tool_events:z.boolean().default(false),event_id:z.number().int().positive().optional()},async a=>{await observe(a.agent_id);return manager.publicEvents(a.agent_id,a.after,a.limit,{maxChars:a.max_chars,includeToolEvents:a.include_tool_events,eventId:a.event_id});},true);
+  register('dsh_followup','Continue an idle DSH agent with its original conversation. Busy agents must be interrupted first. Also resumes persisted sessions after service restart.',{...id,task:z.string().min(1),legacy:z.boolean().default(false)},a=>manager.followup(a.agent_id,a.task).then(value=>a.legacy?value:receipt(value,'followup')));
+  register('dsh_interrupt','Cancel current execution and queued input; return only after DSH reaches idle. Keeps conversation and any files already changed.',{...id,legacy:z.boolean().default(false)},a=>manager.interrupt(a.agent_id).then(value=>a.legacy?value:status(value)));
+  register('dsh_close','Release an agent runtime and mark it closed. For external Web sessions, only detach the bridge observer; the Web session keeps running. Retains history and files.',{...id,legacy:z.boolean().default(false)},a=>manager.close(a.agent_id).then(value=>a.legacy?value:status(value)));
+  register('dsh_wait','Await completion with no timeout by default. The settled response contains the final answer once and no streaming partial text. Use legacy:true for the old complete state payload.',{...id,seconds:z.number().min(0).max(2147483.647).optional(),legacy:z.boolean().default(false)},async(a,extra)=>{await observe(a.agent_id);return manager.wait(a.agent_id,a.seconds,extra.signal).then(value=>projectWait(value,{full:a.legacy}));},true);
   return server;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-subagent-mcp",
-  "version": "0.2.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.mjs",
@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "ws": "^8.21.3",
     "zod": "^3.25.76"
   },
   "description": "Persistent DeepSeek Harness subagents for Codex: delegate, follow up, inspect progress, and interrupt through MCP.",
@@ -29,6 +30,7 @@
     "skills/",
     "docs/",
     "README.md",
+    "CHANGELOG.md",
     "README.zh-CN.md",
     "LICENSE"
   ],
