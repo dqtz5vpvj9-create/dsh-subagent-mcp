@@ -167,3 +167,12 @@ test('a Web session error ends the turn without detaching the observer',async t=
   const wait=f.call('dsh_wait',{agent_id:f.id});f.begin(f.calls.findLast(x=>x.method==='session/prompt').args.request);f.finish('Recovered');
   const done=await wait;assert.equal(done.status,'completed');assert.equal(done.answer,'Recovered');
 });
+
+test('a bridge failure without a turn result stays an error when observed again',async t=>{
+  const f=await setup(t);await f.call('dsh_attach',{session_id:f.id,web_url:f.web_url});
+  const a=f.manager.get(f.id);a.status='error';a.error='DSH Web connection closed';a.finish_reason=null;f.manager.save(a);
+  const status=await f.call('dsh_status',{agent_id:f.id});
+  assert.equal(status.status,'error');assert.equal(status.error,'DSH Web connection closed');
+  const runtime=f.manager.external.live.get(f.id);const closed=f.manager.get(f.id);closed.status='closed';f.manager.save(closed);
+  f.manager.external.settle(f.id,runtime);assert.equal(f.manager.get(f.id).status,'closed');
+});

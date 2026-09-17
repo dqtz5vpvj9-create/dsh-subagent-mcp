@@ -133,10 +133,13 @@ export class ExternalSessions {
   }
   settle(id,runtime) {
     const a=this.manager.get(id);
+    // Closing detaches the observer for good; a bridge failure without a turn
+    // result stays an error until new work starts.
+    if(a.status==='closed')return;
     if(runtime.requests.size||runtime.queue.length)a.status=runtime.running?'running':'starting';
     else if(runtime.running) a.status='running';
     else if(a.finish_reason) a.status=settledStatus(a.finish_reason);
-    else if(!active(a))a.status='idle';
+    else if(!active(a)&&a.status!=='error')a.status='idle';
     else return;
     a.error=a.status==='error'?a.error??a.finish_reason?.error?.message??null:null;
     this.manager.save(a);
