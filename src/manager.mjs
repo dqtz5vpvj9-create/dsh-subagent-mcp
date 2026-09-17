@@ -171,7 +171,7 @@ export class Manager extends EventEmitter {
       if(p.status==='idle') this.live.get(id)?.request('session/checkpoint',{sessionId:id}).catch(e=>this.event(id,'checkpoint/error',{message:e.message}));
     }
   }
-  async start({task,cwd,name,model='deepseek-v4-flash',provider='deepseek-official',effort='max',permission='workspace-write',preset='standard'}) {
+  async start({task,cwd,name,model='deepseek-flash',provider='deepseek-official',effort='max',permission='workspace-write',preset='standard'}) {
     if(!isAbsolute(cwd)||!statSync(cwd).isDirectory())throw new Error('cwd must be an existing absolute directory');
     const a={id:randomUUID(),name:name?.trim()||titleFromTask(task),cwd,model,provider,effort,permission,preset,status:'starting',created_at:new Date().toISOString(),answer:'',partial_text:'',persisted:false};
     this.save(a);

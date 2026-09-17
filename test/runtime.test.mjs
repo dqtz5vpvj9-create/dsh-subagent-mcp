@@ -52,7 +52,7 @@ export function apply(ctx){
   const initialize=async resume=>{
     rt=new Runtime(agent,config);
     rt.on('exit',()=>{});
-    await rt.request('initialize',{cwd:dir,provider:'deepseek-official',model:'deepseek-v4-flash',permission:'read-only',preset:'minimal',resume});
+    await rt.request('initialize',{cwd:dir,provider:'deepseek-official',model:'deepseek-flash',permission:'read-only',preset:'minimal',resume});
     return rt.request('session/prepare',{sessionId:agent.id});
   };
   const first=await initialize(false);
@@ -101,7 +101,7 @@ test('real DSH standard preset prepares in an isolated state',
   const agent={id:randomUUID(),cwd:dir,preset:'standard'}; let rt;
   t.after(async()=>{await rt?.close();if(previous===undefined)delete process.env.DSH_HOME;else process.env.DSH_HOME=previous;rmSync(dir,{recursive:true});});
   rt=new Runtime(agent,config); rt.on('exit',()=>{});
-  await rt.request('initialize',{cwd:dir,provider:'deepseek-official',model:'deepseek-v4-flash',permission:'read-only',preset:'standard',resume:false});
+  await rt.request('initialize',{cwd:dir,provider:'deepseek-official',model:'deepseek-flash',permission:'read-only',preset:'standard',resume:false});
   const prepared=await rt.request('session/prepare',{sessionId:agent.id});
   assert.equal(prepared.cwd,dir); assert.equal(prepared.preset,'standard'); assert.deepEqual(prepared.session_ids,[agent.id]); assert.ok(prepared.workspace_id);
   for(let i=0;i<250&&!existsSync(snapshot);i++)await new Promise(r=>setTimeout(r,20));

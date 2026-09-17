@@ -9,7 +9,7 @@ Use the installed `dsh_subagent` MCP tools. This runs the DSH harness with its o
 
 ## Delegate and retain context
 
-Call `dsh_start` with an explicit absolute `cwd`, a short descriptive `name`, and a self-contained task: objective, relevant context, allowed files/actions, constraints and expected evidence. The child does not inherit the parent transcript. The name becomes the session title in DSH Web, where many agents share one workspace; without it the bridge uses the task's first line. Use `dsh_rename` to correct a name later. Respect the user's model choice; otherwise the server defaults to DeepSeek V4 Flash with `max` effort.
+Call `dsh_start` with an explicit absolute `cwd`, a short descriptive `name`, and a self-contained task: objective, relevant context, allowed files/actions, constraints and expected evidence. The child does not inherit the parent transcript. The name becomes the session title in DSH Web, where many agents share one workspace; without it the bridge uses the task's first line. Use `dsh_rename` to correct a name later. Respect the user's model choice; otherwise the server defaults to DeepSeek V4.1 Flash (`deepseek-flash`) with `max` effort.
 
 Set `permission: read-only` for investigation. Use `workspace-write` for authorized changes inside `cwd`: its sandbox denies writes elsewhere, gives the shell a private `/tmp`, and cannot ask for escalation. Network access, such as adb over TCP, still works. DSH permissions are independent of the parent client's permissions; select no broader access than the parent task permits. `danger-full-access` requires authorization for that access. Missing approval support is not permission to escalate.
 
