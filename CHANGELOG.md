@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Default new agents to DeepSeek V4.1 Flash (`deepseek-flash`) instead of DeepSeek V4 Flash. Existing agents keep the model they were created with.
+
 ## 0.4.0
 
 - Apply the requested permission after DSH pins its default preset, and refuse a runtime whose effective permission differs. Earlier `workspace-write` agents ran with the user's DSH default when that default was `danger-full-access`.
