@@ -155,3 +155,15 @@ test('external max-token termination is an error, and streamed text remains visi
   const waiting=f.call('dsh_wait',{agent_id:f.id});f.finish('Partial result','max-tokens');
   const result=await waiting;assert.equal(result.status,'error');assert.equal(result.finish_reason.kind,'max-tokens');
 });
+
+test('a Web session error ends the turn without detaching the observer',async t=>{
+  const f=await setup(t,{running:true});await f.call('dsh_attach',{session_id:f.id,web_url:f.web_url});
+  const waiting=f.call('dsh_wait',{agent_id:f.id});
+  f.push('$events',{type:'emit',event:'api-session/error',args:[f.id,'session event "turn/end" carries non-JSON-serializable data']});
+  f.status(false);
+  const failed=await waiting;assert.equal(failed.status,'error');assert.match(failed.error,/non-JSON-serializable/);
+  assert.equal(f.manager.external.live.has(f.id),true);
+  await f.call('dsh_followup',{agent_id:f.id,task:'try again'});
+  const wait=f.call('dsh_wait',{agent_id:f.id});f.begin(f.calls.findLast(x=>x.method==='session/prompt').args.request);f.finish('Recovered');
+  const done=await wait;assert.equal(done.status,'completed');assert.equal(done.answer,'Recovered');
+});

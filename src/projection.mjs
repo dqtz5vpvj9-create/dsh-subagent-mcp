@@ -1,5 +1,6 @@
 // Public MCP projections. The manager keeps the complete durable record; this
 // module controls what crosses the MCP boundary.
+import {contextLimitTokens} from './config.mjs';
 const HIDDEN = new Set();
 
 export function sanitize(value, {full = false} = {}) {
@@ -16,17 +17,26 @@ export function sanitize(value, {full = false} = {}) {
 export function receipt(value, operation) {
   const id = value.id ?? value.agent_id;
   const out={agent_id: id, id, operation, status: value.status, accepted: true};
+  if(value.name) out.name=value.name;
+  Object.assign(out, context(value));
   if(value.delivery) out.delivery=sanitize(value.delivery);
   if(value.request_id) out.request_id=value.request_id;
   return out;
+}
+
+function context(value) {
+  const limit = contextLimitTokens(value.provider);
+  if (!value.context_tokens) return {};
+  return limit ? {context_tokens: value.context_tokens, context_limit_tokens: limit} : {context_tokens: value.context_tokens};
 }
 
 export function status(value, {full = false} = {}) {
   if (full) return sanitize({...value, agent_id: value.id}, {full: true});
   const out = {agent_id: value.id, id: value.id, status: value.status};
   for (const key of ['name', 'cwd', 'finish_reason', 'last_event', 'updated_at', 'workspace_id', 'error']) {
-    if (value[key] !== undefined && value[key] !== null) out[key] = sanitize(value[key]);
+    if (value[key] !== undefined && value[key] !== null && value[key] !== '') out[key] = sanitize(value[key]);
   }
+  Object.assign(out, context(value));
   if (value.status === 'running' && value.last_event) out.progress = value.last_event;
   return out;
 }
@@ -42,6 +52,8 @@ export function wait(value, {full = false} = {}) {
   // Only a settled wait gets the final answer, once. Partial streaming text is
   // deliberately never part of this projection.
   if (value.wait_outcome === 'settled' && value.status === 'completed' && value.answer) out.answer = value.answer;
+  // The failed turn produced nothing to accept; hand over the last good result.
+  if (value.wait_outcome === 'settled' && value.status === 'context_exhausted' && value.last_completed_answer) out.last_completed_answer = value.last_completed_answer;
   return out;
 }
 

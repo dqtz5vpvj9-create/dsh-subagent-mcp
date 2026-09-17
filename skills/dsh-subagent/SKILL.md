@@ -9,9 +9,9 @@ Use the installed `dsh_subagent` MCP tools. This runs the DSH harness with its o
 
 ## Delegate and retain context
 
-Call `dsh_start` with an explicit absolute `cwd` and a self-contained task: objective, relevant context, allowed files/actions, constraints and expected evidence. The child does not inherit the Codex transcript. Respect the user's model choice; otherwise the server defaults to DeepSeek V4 Flash with `max` effort.
+Call `dsh_start` with an explicit absolute `cwd`, a short descriptive `name`, and a self-contained task: objective, relevant context, allowed files/actions, constraints and expected evidence. The child does not inherit the Codex transcript. The name becomes the session title in DSH Web, where many agents share one workspace; without it the bridge uses the task's first line. Use `dsh_rename` to correct a name later. Respect the user's model choice; otherwise the server defaults to DeepSeek V4 Flash with `max` effort.
 
-Set `permission: read-only` for investigation. Use `workspace-write` for authorized changes. DSH permissions are independent of Codex permissions; select no broader access than the parent task permits. `danger-full-access` requires authorization for that access. Missing approval support is not permission to escalate.
+Set `permission: read-only` for investigation. Use `workspace-write` for authorized changes inside `cwd`: its sandbox denies writes elsewhere, gives the shell a private `/tmp`, and cannot ask for escalation. Network access, such as adb over TCP, still works. DSH permissions are independent of Codex permissions; select no broader access than the parent task permits. `danger-full-access` requires authorization for that access. Missing approval support is not permission to escalate.
 
 Keep the returned `id` and pass it as `agent_id` on later calls. Starting returns immediately and is not proof that the model task succeeded. For parallel agents, divide write ownership so they do not edit the same files concurrently.
 
@@ -77,7 +77,9 @@ refresh its MCP connection or reconnect the client.
 - Use `dsh_status` sparingly for compact lifecycle state; it does not include answer or partial text by default.
 - Use `dsh_events` with the previous `next_cursor` as `after`. Default events contain only new assistant-visible text. Set `include_tool_events:true` for tool summaries; use a specific `event_id` together with that flag for one full tool record. Pass continuation cursors unchanged so large events resume without loss or duplication.
 - Use `dsh_wait` for completion delivery. Omit `seconds` for persistent work. `wait_outcome: timeout` with `next_action: continue_waiting` means the child still needs supervision. `wait_outcome: settled` returns the final answer once and never promotes partial progress to an answer. Use `legacy:true` only for compatibility with old full state payloads.
-- When the agent is idle, call `dsh_followup` on the same ID. Do not create a replacement agent for a follow-up question.
+- When the agent is idle, call `dsh_followup` on the same ID for a question or next step about the same work. Do not create a replacement agent for that.
+- Start a new agent for an unrelated task. Context accumulates across follow-ups; an agent that serves a long series of separate tasks eventually exceeds the model window. Status and receipts report `context_tokens` against `context_limit_tokens`. A minimal-preset agent refuses follow-ups past 75% of the limit.
+- `context_exhausted` means the last turn overflowed the model window and produced nothing. The agent cannot continue. `dsh_wait` returns `last_completed_answer` from its previous successful turn; start a new agent with a self-contained handoff, including what the failed request asked for.
 - If it is busy and the user redirects or stops it, call `dsh_interrupt`. Wait for acknowledgement before sending the replacement task. A timeout is not confirmation that work stopped.
 
 Interruption cancels current execution and queued input; it does not roll back completed file changes. After an interruption, preserve the stop instruction and do not resume until the user authorizes continuation.
@@ -86,7 +88,7 @@ Use `dsh_list` to recover an earlier agent ID, matching the workspace and task r
 
 ## Report results
 
-Distinguish `completed` from `error` and `interrupted`, and check `finish_reason`. A final text or successful MCP response alone is not task acceptance. Verify important claims against changed files, command output or test artifacts. Include the agent ID when it helps the user continue the work.
+Distinguish `completed` from `error`, `context_exhausted` and `interrupted`, and check `finish_reason`. A final text or successful MCP response alone is not task acceptance. Verify important claims against changed files, command output or test artifacts. Include the agent ID when it helps the user continue the work.
 
 If the MCP tools are unavailable, say so rather than silently substituting a one-shot shell command. Installation is documented in the repository README. This skill does not itself install services, change credentials, or authorize additional tasks. DSH activity appears through MCP rather than Codex's native `/agent` UI.
 

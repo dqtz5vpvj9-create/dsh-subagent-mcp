@@ -20,6 +20,8 @@ Disconnecting a client leaves work running. Restarting the daemon stops its proc
 ## Operational boundaries
 
 - A child does not inherit the Codex transcript. Include the relevant context, permitted actions, and acceptance criteria in its task.
+- The bridge applies the requested permission preset after DSH creates the session, then refuses to run if DSH reports a different effective preset. Applying it earlier let a user default such as `danger-full-access` replace `workspace-write`.
+- `workspace-write` confines file writes to `cwd` and gives the shell a private `/tmp`; network access remains available.
 - DSH permissions are independent of Codex permissions. Do not grant broader access than the parent task authorizes. Approval escalation has no human answerer in this bridge and fails closed.
 - Interrupting does not undo files already changed. Check results against actual artifacts.
 - Completion events release pending `dsh_wait` calls. The skill keeps the parent turn active and requires it to process results. This does not wake a parent turn that has ended. Progress is queried through tools; large events are marked truncated.

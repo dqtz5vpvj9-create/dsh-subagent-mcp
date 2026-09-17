@@ -10,7 +10,7 @@ const { JsonRpcLineTransport } = await pkg('@deepseek-ai/dsh-sdk-protocol');
 const {SessionHistoryController}=await import(pathToFileURL(join(dirname(requireDsh.resolve('@deepseek-ai/dsh-api-session-controller')),'types/history.js')).href);
 const {SessionControlController}=await import(pathToFileURL(join(dirname(requireDsh.resolve('@deepseek-ai/dsh-api-session-controller')),'types/control.js')).href);
 export const name = 'codex-subagent-rpc';
-export const inject = ['agents', 'sessions', 'permissionPresets', 'sdkAppStartup', 'loader', 'workspaceRegistry', 'agentPresets', 'sessionQuery', 'sessionProjections'];
+export const inject = ['agents', 'sessions', 'permissionPresets', 'sdkAppStartup', 'loader', 'workspaceRegistry', 'agentPresets', 'sessionQuery', 'sessionProjections', 'sessionTitle'];
 
 export function apply(ctx) {
   const history=new SessionHistoryController(ctx,()=>{});
@@ -27,7 +27,6 @@ export function apply(ctx) {
         if (agent.session.header.cwd !== this.cwd) throw new Error('Stored session cwd differs from requested cwd');
         if ((agent.session.header.agentPreset ?? null) !== (this.preset ?? null)) throw new Error('Stored session preset differs from requested preset');
         if (this.preset) await ctx.agentPresets.mount(agentCtx, this.preset);
-        ctx.permissionPresets.set(agent.session, this.permission);
       };
       let handle;
       if (this.resume) {
@@ -38,6 +37,12 @@ export function apply(ctx) {
         handle = await ctx.agents.create({sessionId: id, agentOptions,
           meta: {cwd: this.cwd, ...(this.preset ? {agentPreset: this.preset} : {})}, setup});
       }
+      // Apply after creation, as DSH's own session factories do. Inside setup a
+      // fresh session has no permission facts yet, so a request equal to the
+      // inferred default appends nothing and DSH later pins the user's default.
+      ctx.permissionPresets.set(handle.agent.session, this.permission);
+      if (this.title && ctx.sessionTitle.get(handle.agent.session)?.title !== this.title)
+        ctx.sessionTitle.rename(handle.agent.session, this.title);
       const rec = {handle};
       this.sessions.set(id, rec);
       await ctx.sessions.flush(handle.agent.session);
@@ -60,11 +65,12 @@ export function apply(ctx) {
       bridge.resume = params.resume === true;
       bridge.preset = params.preset;
       bridge.permission = params.permission ?? 'workspace-write';
+      bridge.title = params.title;
     }
     if (method === 'session/prepare') {
       const rec = await bridge.getOrCreateSession(params.sessionId);
       const workspace = await ctx.workspaceRegistry.resolveByPath(rec.handle.agent.session.header.cwd);
-      return {cwd: rec.handle.agent.session.header.cwd, preset: rec.handle.agent.session.header.agentPreset ?? null, workspace_id: workspace.id, session_ids: [...workspace.sessionIds]};
+      return {cwd: rec.handle.agent.session.header.cwd, preset: rec.handle.agent.session.header.agentPreset ?? null, permission: ctx.permissionPresets.current(rec.handle.agent.session), title: ctx.sessionTitle.get(rec.handle.agent.session)?.title ?? null, workspace_id: workspace.id, session_ids: [...workspace.sessionIds]};
     }
     if (method === 'session/cancel') {
       const rec = bridge.sessions.get(params.sessionId);
@@ -73,6 +79,13 @@ export function apply(ctx) {
       await rec.handle.agent.whenIdle();
       await ctx.sessions.flush(rec.handle.agent.session);
       return {status: 'idle'};
+    }
+    if (method === 'session/rename') {
+      const rec = bridge.sessions.get(params.sessionId);
+      if (!rec) throw new Error('Session is not loaded');
+      ctx.sessionTitle.rename(rec.handle.agent.session, params.title);
+      await ctx.sessions.flush(rec.handle.agent.session);
+      return {title: ctx.sessionTitle.get(rec.handle.agent.session)?.title ?? params.title};
     }
     if (method === 'session/checkpoint') {
       const rec = bridge.sessions.get(params.sessionId);

@@ -2,6 +2,7 @@ import {mkdirSync,readFileSync,writeFileSync,unlinkSync} from 'node:fs';
 import {dirname,join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {authenticateWeb,WebClient} from './web-client.mjs';
+import {settledStatus} from './manager.mjs';
 
 const active=a=>['starting','running','interrupting'].includes(a.status);
 const textOf=message=>(message?.content??[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
@@ -57,7 +58,9 @@ export class ExternalSessions {
         } else if(frame.type==='ready')runtime.clientId=frame.clientId;
         else if(frame.type==='emit'&&frame.args[0]===id) {
           if(frame.event==='api-session/status') {runtime.running=frame.args[1];this.settle(id,runtime);}
-          else if(frame.event==='api-session/error')fail(new Error(frame.args[1]));
+          // A session error ends the current turn inside DSH Web; the Web
+          // connection and session remain usable, so keep observing.
+          else if(frame.event==='api-session/error')this.sessionError(id,runtime,String(frame.args[1]));
         }
       }));
       const snapshot=await client.subscribe('session/follow',{request:{address:{kind:'session',sessionId:id},maxMessages:2,assistantStream:true}},receive(frame=>this.history(id,runtime,frame)));
@@ -132,10 +135,22 @@ export class ExternalSessions {
     const a=this.manager.get(id);
     if(runtime.requests.size||runtime.queue.length)a.status=runtime.running?'running':'starting';
     else if(runtime.running) a.status='running';
-    else if(a.finish_reason) a.status=a.finish_reason.kind==='completed'?'completed':['cancelled','interrupted'].includes(a.finish_reason.kind)?'interrupted':'error';
+    else if(a.finish_reason) a.status=settledStatus(a.finish_reason);
     else if(!active(a))a.status='idle';
     else return;
-    a.error=null;this.manager.save(a);
+    a.error=a.status==='error'?a.error??a.finish_reason?.error?.message??null:null;
+    this.manager.save(a);
+  }
+  sessionError(id,runtime,message) {
+    const a=this.manager.get(id);
+    a.finish_reason={kind:'error',error:{message}};a.error=message;this.manager.save(a);
+    this.manager.event(id,'error',{message});
+    this.settle(id,runtime);
+  }
+  async rename(id,title) {
+    const runtime=await this.ensure(id);
+    const value=await runtime.client.rpc('session/rename',{request:{sessionId:id,title}});
+    const a=this.manager.get(id);a.name=value?.title??title;this.manager.save(a);return a;
   }
   async status(id) {
     const a=this.manager.get(id);if(a.status==='closed')return a;

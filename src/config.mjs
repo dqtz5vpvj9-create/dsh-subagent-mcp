@@ -3,6 +3,12 @@ import {delimiter,join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 
+// DeepSeek rejects a request when prompt plus reserved completion exceeds its
+// window. DSH compacts at a fraction of the window without that reservation, so
+// its 256k default completion budget let prompts fail below the threshold.
+export const CONTEXT_WINDOW_TOKENS=1048576;
+export const MAX_OUTPUT_TOKENS=128000;
+export const contextLimitTokens=provider=>provider==='deepseek-official'?CONTEXT_WINDOW_TOKENS-MAX_OUTPUT_TOKENS:undefined;
 export const projectRoot=dirname(dirname(fileURLToPath(import.meta.url)));
 export const stateDirectory=()=>process.env.DSH_SUBAGENT_STATE ?? join(homedir(),'.local/state/dsh-subagent-mcp');
 export function resolveDshCli() {
@@ -16,6 +22,9 @@ export function runtimeConfig(state=stateDirectory()) {
   const legacyPatch=join(state,'bridge-legacy.patch.yml');
   const shared=`- id: sdk-jsonrpc-server
   disabled: true
+- id: llm-deepseek
+  config:
+    maxTokens: ${MAX_OUTPUT_TOKENS}
 - insert:
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'

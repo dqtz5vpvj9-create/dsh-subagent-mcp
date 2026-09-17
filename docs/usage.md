@@ -12,6 +12,7 @@
 | `dsh_wait` | Waits until the root agent settles; omit `seconds` for persistent work. The settled response contains the final answer once. |
 | `dsh_followup` | Continues an idle agent, restoring its persisted DSH conversation if necessary. |
 | `dsh_interrupt` | Cancels active and queued input, waits for idle, and flushes history. |
+| `dsh_rename` | Sets the agent name and its DSH session title. |
 | `dsh_close` | Releases the runtime and closes that bridge agent while retaining history. |
 
 `dsh_wait` subscribes to root state changes and returns immediately on completion,
@@ -33,6 +34,29 @@ can detach, but require a later parent turn to retrieve and process the result.
 Cancelling a wait only removes its observer; use `dsh_interrupt` to stop the child.
 
 Pass the returned `id` as `agent_id` in later calls. A busy agent rejects follow-ups: interrupt it first when changing direction. Keep the agent open while further questions are expected; closing it disables follow-ups through the bridge.
+
+Give each agent a short `name`. It becomes the DSH Web session title, so a
+workspace with many delegated sessions stays readable. Without a name the bridge
+uses the first line of the task, truncated to 60 characters.
+
+## Context budget
+
+Context accumulates across follow-ups. Reuse an agent for more work on the same
+task and start a new one for unrelated work. Status, wait and receipts report
+`context_tokens`, the size of the conversation at its last model step, and for
+DeepSeek routes `context_limit_tokens`, the largest prompt a request can carry.
+
+DeepSeek rejects a request whose prompt and reserved completion exceed its
+1,048,576-token window. DSH reserved 256k completion tokens while compacting at
+80% of a nominal 1M window, so prompts near 793k failed before compaction could
+run. The bridge caps completion at 128k tokens, which leaves compaction headroom
+below the 920,576-token request limit.
+
+A turn that still overflows settles as `context_exhausted` with
+`next_action: start_new_agent`. The agent refuses follow-ups, and `dsh_wait`
+returns `last_completed_answer` from its previous successful turn for the
+handoff. Minimal-preset agents never compact, so they refuse follow-ups once
+the conversation reaches 75% of the request limit.
 
 Model, provider, effort and permission are selected at creation. Defaults are defined by `Manager.start` in [manager.mjs](../src/manager.mjs); provider routes must be available in the DSH composition.
 

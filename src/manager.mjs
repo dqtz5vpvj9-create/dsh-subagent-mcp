@@ -1,11 +1,26 @@
 import {EventEmitter} from 'node:events';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
-import {statSync} from 'node:fs';
+import {existsSync,statSync} from 'node:fs';
 import {isAbsolute} from 'node:path';
 import {Runtime} from './runtime.mjs';
 import {ExternalSessions} from './external-sessions.mjs';
 import {events as projectEvents} from './projection.mjs';
+import {contextLimitTokens} from './config.mjs';
+
+const ACTIVE=['starting','running','interrupting'];
+// A turn that overflowed the model window cannot succeed on the same
+// conversation; report it apart from ordinary errors so the parent hands off.
+export function settledStatus(reason) {
+  if(reason?.kind==='completed')return 'completed';
+  if(['cancelled','interrupted'].includes(reason?.kind))return 'interrupted';
+  if(reason?.error?.code==='CONTEXT_WINDOW_EXCEEDED')return 'context_exhausted';
+  return 'error';
+}
+export function titleFromTask(task) {
+  const line=String(task).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).find(Boolean)??'';
+  return [...line].length>60?[...line].slice(0,59).join('')+'…':line;
+}
 
 export class Manager extends EventEmitter {
   constructor(config, RuntimeClass = Runtime) {
@@ -18,8 +33,10 @@ export class Manager extends EventEmitter {
       CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, agent TEXT NOT NULL, time TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS events_agent_seq ON events(agent,seq);`);
     for (const a of this.list()) {
-      if (!a.external && ['starting','running','interrupting'].includes(a.status)) {
+      if (!a.external && ACTIVE.includes(a.status)) {
         a.status = 'interrupted'; a.error = 'Service restarted; work was not automatically replayed.'; this.save(a);
+      } else if (a.status==='error' && settledStatus(a.finish_reason)==='context_exhausted') {
+        a.status = 'context_exhausted'; this.save(a);
       }
     }
   }
@@ -71,7 +88,7 @@ export class Manager extends EventEmitter {
   }
   wait(id,seconds,signal) {
     const active=a=>['starting','running','interrupting'].includes(a.status);
-    const result=(a,outcome)=>({...a,wait_outcome:outcome,next_action:active(a)?'continue_waiting':a.status==='completed'?'review_and_continue':a.status==='error'?'handle_error':'respect_stop'});
+    const result=(a,outcome)=>({...a,wait_outcome:outcome,next_action:active(a)?'continue_waiting':a.status==='completed'?'review_and_continue':a.status==='context_exhausted'?'start_new_agent':a.status==='error'?'handle_error':'respect_stop'});
     const initial=this.get(id);
     if(signal?.aborted)return Promise.reject(signal.reason??new Error('Wait cancelled'));
     if(!active(initial))return Promise.resolve(result(initial,'settled'));
@@ -107,8 +124,12 @@ export class Manager extends EventEmitter {
       this.event(a.id,'runtime/exit',{message:error.message});
     });
     try {
-      await rt.request('initialize',{cwd:a.cwd,provider:a.provider,model:a.model,reasoningEffort:a.effort,permission:a.permission,preset:a.preset,resume:a.persisted===true});
+      await rt.request('initialize',{cwd:a.cwd,provider:a.provider,model:a.model,reasoningEffort:a.effort,permission:a.permission,preset:a.preset,title:a.name||undefined,resume:a.persisted===true});
       const identity=await rt.request('session/prepare',{sessionId:a.id});
+      // DSH composes permission defaults from user settings; refuse to run a
+      // session under a different preset than the parent requested.
+      if(a.permission&&identity.permission!==a.permission)
+        throw new Error(`DSH applied permission ${identity.permission} instead of requested ${a.permission}; runtime stopped`);
       const current=this.get(a.id);
       current.workspace_id=identity.workspace_id;
       current.preset=identity.preset;
@@ -133,6 +154,7 @@ export class Manager extends EventEmitter {
         const blocks=e.data.message.content;
         a.answer=blocks.filter(b=>b.type==='text').map(b=>b.text).join('\n');
         this.event(id,e.type,{seq:e.seq,text:a.answer,usage:e.data.usage,interrupted:e.data.interrupted});
+        if(e.data.usage?.totalTokens)a.context_tokens=e.data.usage.totalTokens;
       } else if(e.type==='turn/end') {a.finish_reason=e.data.reason;this.event(id,e.type,e.data);}
       else if(/^(tool\/|turn\/|step\/|permission\/|sandbox\/|approval\/)/.test(e.type)) {
         this.event(id,e.type,{...e.data,session_seq:e.seq});
@@ -143,14 +165,15 @@ export class Manager extends EventEmitter {
     if(method==='session.status') {
       if(p.status==='running') a.status='running';
       else if(a.status==='interrupting' || a.finish_reason?.kind==='cancelled' || a.finish_reason?.kind==='interrupted') a.status='interrupted';
-      else a.status=a.finish_reason?.kind==='completed'?'completed':'error';
+      else a.status=settledStatus(a.finish_reason);
+      if(a.status==='completed')a.last_completed_answer=a.answer;
       this.save(a); this.event(id,method,p);
       if(p.status==='idle') this.live.get(id)?.request('session/checkpoint',{sessionId:id}).catch(e=>this.event(id,'checkpoint/error',{message:e.message}));
     }
   }
-  async start({task,cwd,name='',model='deepseek-v4-flash',provider='deepseek-official',effort='max',permission='workspace-write',preset='standard'}) {
+  async start({task,cwd,name,model='deepseek-v4-flash',provider='deepseek-official',effort='max',permission='workspace-write',preset='standard'}) {
     if(!isAbsolute(cwd)||!statSync(cwd).isDirectory())throw new Error('cwd must be an existing absolute directory');
-    const a={id:randomUUID(),name,cwd,model,provider,effort,permission,preset,status:'starting',created_at:new Date().toISOString(),answer:'',partial_text:'',persisted:false};
+    const a={id:randomUUID(),name:name?.trim()||titleFromTask(task),cwd,model,provider,effort,permission,preset,status:'starting',created_at:new Date().toISOString(),answer:'',partial_text:'',persisted:false};
     this.save(a);
     // Return the ID immediately. Boot and prompt errors remain observable by status.
     this.serial(a.id,()=>this.submit(a.id,task)).catch(e=>{const b=this.get(a.id);b.status='error';b.error=e.message;this.save(b);this.event(a.id,'error',{message:e.message});});
@@ -174,7 +197,27 @@ export class Manager extends EventEmitter {
     if(a.external)return this.external.send(id,task,'queue',true);
     if(a.status==='closed')throw new Error('Agent is closed');
     if(['running','starting','interrupting'].includes(a.status))throw new Error('Agent is busy; interrupt it before redirecting, or wait until idle.');
+    if(a.status==='context_exhausted')throw new Error('Agent exhausted its model context; start a new agent with a self-contained handoff (last_completed_answer is in dsh_wait/dsh_status legacy output).');
+    const limit=contextLimitTokens(a.provider);
+    if(a.preset==='minimal'&&limit&&a.context_tokens>=limit*.75)
+      throw new Error(`Agent context is ${a.context_tokens} of ${limit} tokens and the minimal preset does not compact; start a new agent for this task.`);
     return this.submit(id,task);
+  });}
+  rename(id,name) {return this.serial(id,async()=>{
+    const title=name.trim();
+    if(!title)throw new Error('name must not be blank');
+    const a=this.get(id);
+    if(a.external)return this.external.rename(id,title);
+    a.name=title;this.save(a);
+    if(!a.persisted)return a;
+    let rt=this.live.get(id);
+    if(rt)await rt.request('session/rename',{sessionId:id,title});
+    else if(existsSync(a.cwd)) {
+      // Booting applies the stored name; release a runtime nobody was using.
+      rt=await this.runtime(a);
+      if(!ACTIVE.includes(this.get(id).status)){await rt.close();this.live.delete(id);}
+    } else throw new Error('Stored name updated, but the session cwd no longer exists so DSH was not renamed');
+    return this.get(id);
   });}
   interrupt(id) {return this.serial(id,async()=>{
     if(this.get(id).external)return this.external.interrupt(id);

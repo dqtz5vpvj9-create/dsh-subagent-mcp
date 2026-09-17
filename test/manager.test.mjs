@@ -8,7 +8,7 @@ import {Manager} from '../src/manager.mjs';
 class Fake extends EventEmitter {
   static all=[];
   constructor(a){super();this.id=a.id;this.agent=a;this.calls=[];Fake.all.push(this);}
-  async request(method,p){this.calls.push([method,p]);if(method==='session/prepare')return{cwd:this.agent.cwd,preset:this.agent.preset??null,workspace_id:'workspace-fixture'};if(method==='session/prompt'){this.emit('notification','session.status',{sessionId:this.id,status:'running'});return{messageId:'receipt'};}if(method==='session/cancel'){this.emit('notification','session.status',{sessionId:this.id,status:'idle'});}return{};}
+  async request(method,p){this.calls.push([method,p]);if(method==='session/prepare')return{cwd:this.agent.cwd,preset:this.agent.preset??null,permission:Fake.appliedPermission??this.agent.permission,workspace_id:'workspace-fixture'};if(method==='session/prompt'){this.emit('notification','session.status',{sessionId:this.id,status:'running'});return{messageId:'receipt'};}if(method==='session/cancel'){this.emit('notification','session.status',{sessionId:this.id,status:'idle'});}return{};}
   async close(){}
   finish(text,kind='completed'){
     this.emit('notification','session.event',{sessionId:this.id,event:{type:'assistant/message',data:{message:{content:[{type:'text',text}]}}}});
@@ -158,4 +158,66 @@ test('explicit wait deadline returns timeout and releases its observer',async t=
  t.mock.timers.tick(1000);
  const done=await waiting;assert.equal(done.wait_outcome,'timeout');assert.equal(done.status,'running');
  assert.equal(m.listenerCount('state:'+a.id),0);
+});
+
+test('context overflow settles as context_exhausted and hands over the last good answer',async t=>{
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'first'});await tick();const rt=m.live.get(a.id);
+ rt.emit('notification','session.event',{sessionId:a.id,event:{type:'assistant/message',data:{message:{content:[{type:'text',text:'good result'}]},usage:{totalTokens:790000}}}});
+ rt.finish('good result');
+ await m.followup(a.id,'second');
+ const waiting=m.wait(a.id);
+ rt.emit('notification','session.event',{sessionId:a.id,event:{type:'turn/end',data:{reason:{kind:'error',error:{code:'CONTEXT_WINDOW_EXCEEDED',message:'too long'}}}}});
+ rt.emit('notification','session.status',{sessionId:a.id,status:'idle'});
+ const done=await waiting;
+ assert.equal(done.status,'context_exhausted');assert.equal(done.next_action,'start_new_agent');
+ const {wait,status}=await import('../src/projection.mjs');
+ assert.equal(wait(done).last_completed_answer,'good result');
+ assert.equal(status(done).context_tokens,790000);assert.equal(status(done).context_limit_tokens,920576);
+ await assert.rejects(m.followup(a.id,'third'),/start a new agent/);
+});
+
+test('stored overflow errors are reclassified on restart',async t=>{
+ const {m,dir,config}=setup(t);
+ m.save({id:'old',cwd:dir,status:'error',finish_reason:{kind:'error',error:{code:'CONTEXT_WINDOW_EXCEEDED'}},persisted:true});
+ await m.shutdown();const restored=new Manager(config,Fake);
+ try{assert.equal(restored.get('old').status,'context_exhausted');}finally{await restored.shutdown();}
+});
+
+test('minimal agents near the request limit refuse follow-ups; standard agents compact',async t=>{
+ const {m,dir}=setup(t);
+ for(const preset of ['minimal','standard'])
+  m.save({id:preset,cwd:dir,preset,provider:'deepseek-official',status:'completed',context_tokens:700000,persisted:true,answer:'',partial_text:''});
+ await assert.rejects(m.followup('minimal','more'),/minimal preset does not compact/);
+ assert.equal((await m.followup('standard','more')).status,'running');
+});
+
+test('a runtime that applies a different permission is refused',async t=>{
+ const {m,dir}=setup(t);
+ Fake.appliedPermission='danger-full-access';t.after(()=>{Fake.appliedPermission=undefined;});
+ const a=await m.start({cwd:dir,task:'A',permission:'workspace-write'});
+ await m.wait(a.id,1);const rt=Fake.all.at(-1);
+ assert.equal(m.get(a.id).status,'error');assert.match(m.get(a.id).error,/danger-full-access instead of requested workspace-write/);
+ assert.equal(rt.calls.some(([method])=>method==='session/prompt'),false);
+});
+
+test('agents are named from the task by default and renamed in DSH',async t=>{
+ const {m,dir}=setup(t);
+ const a=await m.start({cwd:dir,task:'\n  Audit   the bind route\nDetails follow'});await tick();
+ assert.equal(a.name,'Audit the bind route');
+ assert.equal(m.live.get(a.id).calls[0][1].title,'Audit the bind route');
+ const named=await m.start({cwd:dir,task:'x'.repeat(200),name:'  explicit name '});assert.equal(named.name,'explicit name');
+ const long=await m.start({cwd:dir,task:'y'.repeat(200)});assert.equal([...long.name].length,60);
+ await tick();
+ const renamed=await m.rename(a.id,'bind-route audit');
+ assert.equal(renamed.name,'bind-route audit');
+ assert.deepEqual(m.live.get(a.id).calls.at(-1),['session/rename',{sessionId:a.id,title:'bind-route audit'}]);
+});
+
+test('renaming an idle persisted agent boots, applies the title, and releases the runtime',async t=>{
+ const {m,dir}=setup(t);
+ m.save({id:'idle',cwd:dir,preset:'standard',permission:'read-only',status:'completed',persisted:true,answer:'',partial_text:''});
+ await m.rename('idle','named later');
+ const rt=Fake.all.at(-1);
+ assert.equal(rt.calls[0][1].title,'named later');assert.equal(rt.calls[0][1].resume,true);
+ assert.equal(m.live.has('idle'),false);assert.equal(m.get('idle').status,'completed');
 });
