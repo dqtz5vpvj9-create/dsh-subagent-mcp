@@ -2,7 +2,7 @@ import net from 'node:net';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {join} from 'node:path';
-import {mkdtempSync, writeFileSync, openSync, closeSync, rmSync} from 'node:fs';
+import {mkdtempSync, writeFileSync, readFileSync, openSync, closeSync, rmSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import WebSocket from 'ws';
@@ -13,8 +13,9 @@ import {connectHostedCodex, stopProcessTree} from './codex-host.mjs';
 export async function launchCodex(args) {
   const passthrough = ['login', 'logout', 'doctor', '--version', '-V', '--help', '-h'].includes(args[0]);
   let record = installation();
-  if (!record && !passthrough) {
-    console.log('First run: setting up DSH for Codex…');
+  const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+  if ((!record || (record.version && record.version !== version)) && !passthrough) {
+    console.log(record ? `Updating DSH for Codex from ${record.version} to ${version}…` : 'First run: setting up DSH for Codex…');
     await (await import('./setup.mjs')).setup([], {launching: true});
     if (process.exitCode) return;
     record = installation();

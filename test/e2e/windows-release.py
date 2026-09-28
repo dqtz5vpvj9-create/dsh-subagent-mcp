@@ -105,9 +105,18 @@ def acceptance(host, package, output, run):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     future=pool.submit(observe,host,run,phase,agent)
                     while not future.done():
-                        found=terminal.expect(['\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=2)
+                        found=terminal.expect(['\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT,
+                            r'Allow the dsh_subagent MCP server to run tool "(dsh_start|dsh_followup|dsh_watch)"'],timeout=2)
                         if found==0:terminal.send('\x1b[1;1R')
                         elif found==1:raise RuntimeError('Codex exited before completing the delegated task.')
+                        elif found==3:
+                            # Click the one-time approval for this explicitly
+                            # requested test operation. Keep the user's policy;
+                            # never select session-wide or permanent approval.
+                            name=terminal.match.group(1)
+                            terminal.expect(r'enter to submit',timeout=30)
+                            terminal.send('\r')
+                            report.setdefault('oneTimeApprovals',[]).append({'phase':phase,'tool':name})
                     phase_report=json.loads(future.result())
                 report['phases'].append(phase_report)
                 agent=phase_report['agentId']
@@ -116,6 +125,8 @@ def acceptance(host, package, output, run):
                 terminal.close();terminal=None
             print(f'{host}: {phase} real delegation, callback and parent artifact accepted',flush=True)
             report['phases'].append(json.loads(remote(host,'node','dsh-e2e-state.mjs','restart',run)))
+            if phase=='first':
+                report['phases'].append(json.loads(remote(host,'node','dsh-e2e-state.mjs','upgrade-baseline',run,timeout=270)))
         report['ok']=True
     except Exception as error:
         report['error']=str(error)

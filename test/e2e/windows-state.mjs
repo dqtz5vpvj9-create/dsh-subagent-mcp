@@ -80,6 +80,18 @@ if(action==='prepare') {
     await delay(1000);
   }
   throw new Error('Real Codex/DSH completion and artifact acceptance did not finish within the test deadline.');
+} else if(action==='upgrade-baseline') {
+  const installed=record();
+  assert.equal(JSON.parse(cli('status','--json')).active.length,0);
+  const {commandSpec}=await import(pathToFileURL(join(installed.root,'src/commands.mjs')));
+  const [npm,...prefix]=commandSpec('npm');
+  // Install the real previous public release as an upgrade fixture. Its known
+  // Windows shim bug requires explicit dependency paths for this setup only.
+  execFileSync(npm,[...prefix,'exec','--yes','--package=dsh-subagent-mcp@0.6.1','--','dsh-subagent-mcp','setup'],
+    {encoding:'utf8',timeout:240000,env:{...process.env,DSH_CLI:installed.dsh,DSH_CODEX_CLI:installed.codex.at(-1)}});
+  assert.equal(record().version,'0.6.1');
+  assert.ok(existsSync(join(workspace,'first-child.txt')));
+  console.log(JSON.stringify({ok:true,upgradeFrom:'0.6.1',retainedArtifact:true}));
 } else if(action==='restart') {
   const before=JSON.parse(cli('status','--json'));assert.equal(before.active.length,0);
   cli('restart');

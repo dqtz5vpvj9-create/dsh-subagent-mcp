@@ -17,6 +17,12 @@ observer reconnects without sending the model prompt again.
 
 The workflow then closes Codex, restarts the background service, opens Codex again,
 and continues the same DSH agent for another task. Both hosts must pass both rounds.
+Before reopening, it installs the previous public release (0.6.1) as an upgrade
+fixture. Explicit dependency paths let that old installer run despite its known
+Windows shim bug. The candidate then receives no setup flags: the single launch
+command must upgrade the old installation and retain the delegated conversation.
+The terminal driver accepts only one-time approvals for the requested DSH tools;
+it leaves the host's sandbox and approval settings in place.
 Only then can the publish step upload the exact tested tarball to npm.
 
 ## Running the gate
