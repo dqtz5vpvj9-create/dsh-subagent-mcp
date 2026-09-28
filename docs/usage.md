@@ -3,13 +3,13 @@
 
 | Tool | What it does |
 |---|---|
-| `dsh_start` | Starts asynchronously and returns a compact receipt; requires an absolute `cwd`. |
+| `dsh_start` | Starts asynchronously and returns a compact receipt; requires an absolute `cwd`. The session belongs to the workspace's DSH Web subagent catalog. |
 | `dsh_attach` | Connects to an existing DSH Web session using its exact session ID and authenticated launch URL. |
 | `dsh_send` | Queues or steers a message into an attached external session, including while it is busy. |
 | `dsh_status` | Returns compact lifecycle state; use `legacy:true` for the complete historical state. |
-| `dsh_events` | Returns assistant-visible text after a cursor; set `include_tool_events:true` before using `event_id` for a targeted full tool event. |
-| `dsh_list` | Finds agents from current and previous client sessions. |
-| `dsh_wait` | Waits until the root agent settles; omit `seconds` for persistent work. The settled response contains the final answer once. |
+| `dsh_events` | Returns completed root-turn replies (`assistant/final`) after a cursor; use `include_progress:true` for intermediate text and `include_descendants:true` for child activity; set `include_tool_events:true` before using `event_id` for a targeted full tool event. |
+| `dsh_list` | Finds agents from current and previous client sessions; active agents first and then by most recent activity, bounded by `limit` (default 20) and `max_chars` (default 12000). Narrow with `status`, `cwd` or `match` instead of raising the cap; `total` counts the whole store and `matched` the filtered rows. |
+| `dsh_wait` | Waits until the root agent settles; omit `seconds` for persistent work. A completed settled response contains the final answer; repeated waits return the same result. |
 | `dsh_followup` | Continues an idle agent, restoring its persisted DSH conversation if necessary. |
 | `dsh_interrupt` | Cancels active and queued input, waits for idle, and flushes history. |
 | `dsh_rename` | Sets the agent name and its DSH session title. |
@@ -22,16 +22,37 @@ deadline. `wait_outcome: timeout` and `next_action: continue_waiting`
 mean the parent must keep supervising the task. Completion between calls remains
 available from persisted state, so the next wait returns it immediately.
 
-The parent should do independent work while the child runs, then call
-`dsh_wait` without `seconds` to await the child settling. On completion, verify the artifacts and
-continue the next authorized step. A child's final answer does not complete the
-parent's integration or deployment work.
+In Codex, the bundled skill registers `scripts/codex_notify.py` after each start
+or follow-up. Its default delivery is App Server `turn/start.toolOutput`: one
+host-side wait, then a `dsh_completion` tool result containing the answer and
+evidence path. The parent can do independent work or yield until that result
+arrives. Accept the artifacts once and continue authorized work. A child's
+answer does not complete the parent's integration or deployment work.
 
-There is no unsolicited wake-up of an ended parent turn. Completion is delivered
-through a pending tool response. The skill therefore requires the parent to keep
-its turn active while dependent work remains. Explicit background-only requests
-can detach, but require a later parent turn to retrieve and process the result.
-Cancelling a wait only removes its observer; use `dsh_interrupt` to stop the child.
+`dsh_events` identifies a final reply from the root `turn/end` with reason
+`completed`, using that turn's last assistant message. It emits nothing for
+running, failed, or interrupted turns. The end event supplies the reply's cursor,
+so reading while a reply is still being generated cannot consume its future
+final result. Continue with `next_cursor` (including string continuation cursors)
+and keep the same options while paging. Previously stored events use the same
+turn-boundary rules; no history migration is required. Progress mode includes
+intermediate messages and the final boundary, so the last text can appear in
+both forms. Child messages are progress only and cannot become root replies.
+Use these options for a specific progress or debugging question. A registered
+callback delivers the result; use `dsh_wait` when no callback is available.
+
+The native Codex callback can wake an ended parent turn. It requires the parent
+App Server to support `turn/start.toolOutput`, Python 3, Node.js and this
+package's dependencies. `--delivery queue` explicitly selects legacy queued
+input; a failed native delivery never retries via queue. The callback defaults
+to the parent `CODEX_THREAD_ID` and local App Server; use `--remote` for an
+existing `unix://PATH`, `ws://` or `wss://` endpoint.
+
+Without a registered callback, keep one `dsh_wait` without `seconds` pending
+until completion. Cancel the host-side listener before interrupting its child;
+cancelling a wait alone only removes the observer. Delivery receipts and full
+results remain in the callback directory for recovery. See the
+[skill](../skills/dsh-subagent/SKILL.md) for receipt handling.
 
 Pass the returned `id` as `agent_id` in later calls. A busy agent rejects follow-ups: interrupt it first when changing direction. Keep the agent open while further questions are expected; closing it disables follow-ups through the bridge.
 

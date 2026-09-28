@@ -1,9 +1,9 @@
 {
   "name": "dsh-subagent-mcp",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test test/*.test.mjs && python3 test/codex_notify_test.py",
     "start": "node src/server.mjs --daemon",
     "setup": "node scripts/install.mjs"
   },
@@ -12,7 +12,7 @@
     "ws": "^8.21.3",
     "zod": "^3.25.76"
   },
-  "description": "Persistent DeepSeek Harness subagents for Codex: delegate, follow up, inspect progress, and interrupt through MCP.",
+  "description": "Let Codex lead and DeepSeek do the work: parallel, persistent DSH agents with native completion callbacks and no model polling.",
   "license": "MIT",
   "engines": {
     "node": ">=24"

@@ -1,12 +1,32 @@
-# Development validation — 2026-09-12
+# Validation
+
+## 0.5.0 release checks — 2026-09-28
+
+`TMPDIR=/mnt/cache/data-cache DSH_RUNTIME_TEST=1 DSH_PACKAGE_TEST=1 npm test`
+passed all **58 Node.js tests and 12 Python tests**, with no skips, on Linux,
+Node.js 24.19.0 and DSH 0.1.5-rc.1. This includes real DSH preset initialization
+and persistence, native callback protocol behavior, and installation from a
+packed npm artifact into an isolated home with stubbed service/client commands.
+The package test checks that the installed runtime survives removal of its
+original package cache. It does not restart the production service.
+
+## Native Codex completion — 2026-09-28
+
+The current callback path was exercised with both active and idle parent turns.
+An idle parent resumed from native tool output, with zero model requests during
+the measured wait. See [the callback validation record](codex-callback-validation.md)
+for versions, measurements, and scope. `npm test` includes the WebSocket adapter
+and detached Python listener tests.
+
+## Initial bridge validation — 2026-09-12
 
 Tested on Linux with Node 24.19.0, DSH 0.1.5-rc.1 and Codex CLI 0.154.0.
 
-## Automated regression tests
+### Automated regression tests
 
 `npm test` covers independent agents, incremental event cursors, busy follow-up rejection, cancellation continuity, incomplete termination, descendant/root result separation, and restart without automatic replay.
 
-## Real DSH and MCP tests
+### Real DSH and MCP tests
 
 `test/live.mjs` exercises the manager against a real DSH runtime:
 
@@ -26,7 +46,7 @@ Tested on Linux with Node 24.19.0, DSH 0.1.5-rc.1 and Codex CLI 0.154.0.
 
 These paths passed during development. Tests make real provider calls; they are not run in CI. Generated raw reports and local session identifiers are excluded from the public repository.
 
-## What this does not establish
+### Scope of the initial tests
 
 Codex's MCP registration was verified. A separate model-driven smoke test in a fresh standalone Codex CLI failed with an OpenAI authentication error before making its tool call. We therefore distinguish successful MCP-client-to-DSH validation from unverified model-driven use in that standalone Codex environment.
 

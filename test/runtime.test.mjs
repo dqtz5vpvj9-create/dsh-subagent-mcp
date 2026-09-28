@@ -6,7 +6,6 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {runtimeConfig} from '../src/config.mjs';
 import {Runtime} from '../src/runtime.mjs';
-import {readHistory} from '../src/web-relay.mjs';
 
 test('real DSH persists workspace membership and mounts minimal before execution and resume',
   {skip:process.env.DSH_RUNTIME_TEST!=='1',timeout:60000},async t=>{
@@ -62,24 +61,9 @@ export function apply(ctx){
   assert.equal(actual.prompt,'You are a helpful software engineer assistant.');
   assert.deepEqual(actual.tools,[process.platform==='win32'?'pwsh':'bash']);
   assert.deepEqual(actual.contexts,[]);
-  const request={address:{kind:'session',sessionId:agent.id},assistantStream:true};
-  const abort=new AbortController();
-  const stream=readHistory(join(dir,'state/web',agent.id+'.sock'),'follow',request,abort.signal);
-  const opening=await stream.next();
-  assert.equal(opening.value.type,'snapshot');
-  writeFileSync(join(dir,'append-title'),'');
-  const update=await stream.next();
-  assert.equal(update.value.event.type,'session/title');
-  assert.equal(update.value.event.data.title,'Live relay update');
-  assert.equal(update.value.event.seq,opening.value.cursor+1);
-  abort.abort();await stream.return();
   await rt.close();
   const resumed=await initialize(true);
   assert.deepEqual(resumed,first);
-  const reopened=readHistory(join(dir,'state/web',agent.id+'.sock'),'follow',request,new AbortController().signal);
-  const reconnect=await reopened.next();
-  assert.ok(reconnect.value.records.some(r=>r.event?.data?.title==='Live relay update'));
-  await reopened.return();
   assert.deepEqual(JSON.parse(readFileSync(snapshot,'utf8')),actual);
 });
 

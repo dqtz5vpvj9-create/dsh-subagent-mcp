@@ -1,6 +1,5 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
-</p>
+<h1 align="center">DSH Subagent MCP</h1>
+<p align="center"><strong>Let Codex lead. Put DeepSeek to work.</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/dsh-subagent-mcp"><img src="https://img.shields.io/npm/v/dsh-subagent-mcp?style=flat-square&amp;color=CB3837" alt="npm version"></a>
@@ -14,101 +13,89 @@
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a> · <a href="#get-started">Quick start</a> · <a href="docs/usage.md">Usage guide</a></p>
 
-Give Codex a DeepSeek coding agent that can read your repo, edit files, and run tests. Ask it another question when it finishes. Check in while it works. Stop it when the plan changes.
+**Give Codex a team of persistent DeepSeek agents.** Delegate implementation, investigation, or testing in parallel. Codex stays available for other work—or stops reasoning until a result arrives, then wakes up to review it.
 
-**Your Codex conversation becomes the place you direct the work. DSH handles the delegated task in its own session.**
+DSH runs the full DeepSeek Harness with its own tools and conversation. Codex handles planning, delegation, and acceptance; each DSH agent handles a complete task.
 
-## Built for ongoing collaboration
+## Delegate. Let it run. Get the result.
 
-| | What you get |
+```mermaid
+flowchart LR
+    C[Codex: plan and delegate] --> A[DSH: implement]
+    C --> B[DSH: investigate]
+    C --> D[DSH: test]
+    A --> R[Completion callback]
+    B --> R
+    D --> R
+    R --> P[Codex wakes up and reviews]
+```
+
+| What matters | What you get |
 | :--- | :--- |
-| **Standard by default** | DSH's native standard preset, including automatic context compaction and tool-result pruning. |
-| **Live in your browser** | With the Web adapter installed, tool activity and streamed replies arrive in DSH Web without refreshing. |
-| **Completion handoff** | The skill keeps the parent waiting for dependent tasks, then checking artifacts and continuing authorized work. |
-| **A conversation that continues** | Ask the same agent to investigate, implement, or verify. Its earlier context stays with it. |
-| **Existing Web sessions** | Attach a session started outside the bridge, read its progress, and queue or steer messages into the same conversation. |
-| **Interrupt and redirect** | Stop the current task, then give the agent a new direction. |
-| **Workspaces that make sense** | Sessions are registered under their working directory in DSH. |
-| **Work survives a disconnect** | The local service keeps running when the Codex client closes. Reconnect to check progress. |
+| **Automatic return** | Each finished task returns native Codex tool output. An idle parent wakes up; an active parent receives the result in its current turn. |
+| **Quiet while waiting** | A detached listener waits outside the model. No repeated model-driven status checks or “is it done yet?” turns. |
+| **Parallel work** | Independent agents finish and report separately. Give each a clear deliverable and its own file ownership. |
+| **Context that carries forward** | Continue the same DSH conversation for fixes and follow-ups. New agents use the standard preset with automatic compaction and tool-result pruning. |
+| **You stay in control** | Choose read-only or workspace-write permissions, inspect progress, interrupt work, and redirect the same agent. |
+| **Reviewable history** | DSH Web groups delegated runs under one parent per workspace. The MCP bridge provides their live status and tool activity. |
 
 ## Get started
 
-You'll need **Linux with systemd**, Node.js satisfying the [package requirement](package.json), Codex CLI, and a working DSH installation with provider credentials.
+You need **Linux with systemd, Node.js 24+, Python 3, Codex CLI, and a configured DSH installation**. Native callbacks need a Codex App Server supporting `turn/start.toolOutput`; the [live validation](docs/codex-callback-validation.md) used CLI 0.157.1 and App Server 0.157.0.
 
 ```sh
 npx -y dsh-subagent-mcp@latest setup --skill
 ```
 
-No clone needed. Setup installs the runtime in a persistent user directory, so the service and skill do not depend on the npx cache. Add `--web` during setup to connect an already initialized DSH Web profile in the same command.
+Setup installs a persistent local service, registers the MCP server, and links the skill. Its runtime stays outside the disposable npx cache. If your DeepSeek key exists only in the current shell, add `--capture-key`. See [setup and upgrades](docs/setup.md).
 
-If your DeepSeek key is only in the current shell's `DEEPSEEK_API_KEY`, add `--capture-key` to the setup command. See [installation and credentials](docs/setup.md) for details.
-
-If you also use DSH Web, initialize its Web profile and install the adapter:
-
-```sh
-npx -y dsh-subagent-mcp@latest web
-```
-
-Profiles with `patchReload: live` load it automatically; otherwise restart the Web profile after its work finishes. See [Web integration and upgrades](docs/operations.md#live-progress-in-the-dsh-web-ui).
-
-Open a new Codex session and try:
+Open a new Codex session and ask:
 
 ```text
-Use $dsh-subagent to review this repository's error handling in read-only mode.
-Keep the agent available for follow-up questions.
+Use $dsh-subagent to implement the agreed plan in parallel.
+Give each agent a complete deliverable, separate file ownership, and relevant tests.
+Register completion callbacks, then review and integrate each result when it arrives.
 ```
 
-The skill handles the delegation workflow; the MCP server supplies the execution tools. DSH appears in Codex as MCP activity.
-
-## From “look into this” to “make the change”
-
-Completion returns through a pending tool call. The parent must keep its turn active; this does not automatically wake an ended conversation. See [completion handoff](docs/usage.md).
-
-An example workflow with the bundled skill:
+For a smaller first task:
 
 ```text
-You → Codex
 Use $dsh-subagent to investigate why cancelled requests leave workers running.
-Have it trace the code and report what it finds. Don't change files yet.
-
-You → Codex
-What has DSH found so far?
-
-You → Codex
-Ask that same agent whether the timeout path has the same problem.
+Keep it read-only and return the root cause with code references.
 ```
 
-For an agent given permission to edit:
+You can later ask “What has it found?”, continue with “Have that same agent fix it and run the tests”, or stop it when the plan changes.
 
-```text
-You → Codex
-Have DSH implement the agreed fix and run the relevant tests.
+## Spend model calls on work
 
-You → Codex
-Stop it. We've changed the approach. Wait until it stops, then give it this plan: …
-```
+The bundled skill registers one host-side listener after each start or follow-up. The listener waits for DSH, saves the full result, and returns the answer as a native `dsh_completion` tool result. Codex can do independent work or end its turn until the callback arrives.
 
-## Standard by default, visible in DSH Web
+In one live test, an idle parent made **zero model requests and used zero input/output tokens over 55.834 seconds**, then resumed automatically from the DSH result. Dispatch and review still use Codex tokens; DSH has its own provider usage. This measures idle waiting, not an overall cost-saving percentage. See the [test and evidence boundary](docs/codex-callback-validation.md).
 
-New subagents use DSH's **standard preset** by default, including automatic context compaction and tool-result pruning. It is mounted before the first task. Follow-ups retain the original preset, including across restarts.
+Errors and context exhaustion also return to the parent. A tool failure that the child is still fixing does not end its task. Explicitly interrupted or closed agents do not trigger a continuation callback.
 
-Pass `preset: "minimal"` explicitly for the fixed-prompt, single-shell preset without automatic compaction. Existing sessions keep their original configuration.
+## See the work, keep the conversation
 
-Sessions are registered under their working directory in DSH. With the Web adapter installed, **the DSH Web conversation receives tool activity and streamed replies without a manual refresh**. You can watch a task delegated from Codex in the browser; when following the latest output, long replies scroll into view as they arrive.
+Each workspace has a **Claude Code / Codex 子代理** entry in DSH Web. Open its subagent catalog to inspect individual conversations and traces without filling the sidebar with every delegated run.
 
-## Go further
+The browser reads persisted history, so it can lag and its running indicators are not authoritative for bridge-owned agents. Ask Codex for live status or tool activity through MCP. Follow-ups and cancellation also go through the bridge.
 
-The MCP bridge returns compact receipts for `dsh_start` and `dsh_followup`.
-`dsh_status` and `dsh_list` are compact lifecycle views, while `dsh_wait`
-returns the final answer once after settlement. Omit `seconds` for persistent
-work. `dsh_events` defaults to new assistant-visible text; request tool
-summaries explicitly and use an `event_id` for one full tool record. Large
-events return a continuation cursor. Use `legacy: true` only for compatibility
-with older full state payloads.
+Already working in an ordinary DSH Web session? Attach it with `dsh_attach` and continue that same conversation. Details are in the [usage guide](docs/usage.md).
 
-[Follow-ups, progress and cancellation](docs/usage.md) · [Permissions and architecture](docs/architecture.md) · [Service management](docs/operations.md) · [Validation](docs/validation.md)
+## Explore the bridge
 
-If this makes DSH useful in your workflow, a star helps others find it. Share what you build—or what gets in the way—in [Issues](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/issues).
+| Guide | Contents |
+| :--- | :--- |
+| [Setup](docs/setup.md) | Credentials, persistent installation, upgrades, and older-session migration |
+| [Usage](docs/usage.md) | Tools, callbacks, follow-ups, progress, external sessions, and context budgets |
+| [Architecture](docs/architecture.md) | Runtime ownership, permissions, and lifecycle |
+| [Operations](docs/operations.md) | Service management, callback recovery, and browser history |
+| [Callback validation](docs/codex-callback-validation.md) | Active/idle parent delivery and measured idle usage |
+| [Changelog](CHANGELOG.md) | Release changes and compatibility notes |
+
+The execution tools work with other MCP clients, including Claude Code. Automatic parent wakeup described here uses the Codex-specific callback; other clients use their supported notification or waiting mechanism. DSH appears as MCP activity in Codex today.
+
+If this improves your workflow, [star the project](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/stargazers) or share your experience in [Issues](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/issues).
 
 ## Built on
 

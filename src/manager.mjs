@@ -9,6 +9,8 @@ import {events as projectEvents} from './projection.mjs';
 import {contextLimitTokens} from './config.mjs';
 
 const ACTIVE=['starting','running','interrupting'];
+// The session DSH Web shows in place of the individual bridge agents.
+export const PARENT_TITLE='Claude Code / Codex 子代理';
 // A turn that overflowed the model window cannot succeed on the same
 // conversation; report it apart from ordinary errors so the parent hands off.
 export function settledStatus(reason) {
@@ -30,8 +32,11 @@ export class Manager extends EventEmitter {
     this.external = new ExternalSessions(this);
     this.db.exec(`PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS agents(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS parents(cwd TEXT PRIMARY KEY, session_id TEXT NOT NULL, seeded INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, agent TEXT NOT NULL, time TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS events_agent_seq ON events(agent,seq);`);
+    if(!this.db.prepare("SELECT * FROM pragma_table_info('parents') WHERE name='seeded'").get())
+      this.db.exec('ALTER TABLE parents ADD COLUMN seeded INTEGER NOT NULL DEFAULT 0');
     for (const a of this.list()) {
       if (!a.external && ACTIVE.includes(a.status)) {
         a.status = 'interrupted'; a.error = 'Service restarted; work was not automatically replayed.'; this.save(a);
@@ -43,6 +48,32 @@ export class Manager extends EventEmitter {
   save(a) {a.updated_at = new Date().toISOString(); this.db.prepare('INSERT OR REPLACE INTO agents VALUES (?,?)').run(a.id,JSON.stringify(a)); this.emit('state:'+a.id,a);}
   get(id) {const r = this.db.prepare('SELECT data FROM agents WHERE id=?').get(id); if (!r) throw new Error('Unknown agent: '+id); return JSON.parse(r.data);}
   list() {return this.db.prepare('SELECT data FROM agents ORDER BY rowid DESC').all().map(r=>JSON.parse(r.data));}
+  // One virtual parent session per workspace. Its children are hidden from the
+  // DSH Web session list and reviewed through its subagent catalog, so the
+  // user's own sessions stay unmixed. The id is minted here, where a single
+  // process decides it, and the DSH side seeds the session on first use.
+  parentFor(cwd) {
+    const existing=this.db.prepare('SELECT session_id FROM parents WHERE cwd=?').get(cwd);
+    if(existing)return existing.session_id;
+    const id='session-'+randomUUID();
+    this.db.prepare('INSERT INTO parents(cwd,session_id) VALUES (?,?)').run(cwd,id);
+    return id;
+  }
+  // The mount point is created by a runtime that exits immediately afterwards.
+  // A DSH process persists a session only while it owns it, and an owner that
+  // stays alive holds the write lease that DSH Web needs to open the session
+  // the user reviews from. Boot order is already serialized by runtime().
+  async ensureParent(a) {
+    const parent=this.parentFor(a.cwd);
+    if(this.db.prepare('SELECT seeded FROM parents WHERE cwd=?').get(a.cwd).seeded)return parent;
+    const rt=new this.RuntimeClass({id:parent,cwd:a.cwd,preset:a.preset},this.config);
+    try {
+      await rt.request('initialize',{cwd:a.cwd,provider:a.provider,model:a.model,reasoningEffort:a.effort,permission:a.permission,preset:a.preset,resume:false});
+      await rt.request('parent/seed',{cwd:a.cwd,parent,parentTitle:PARENT_TITLE},120000);
+      this.db.prepare('UPDATE parents SET seeded=1 WHERE cwd=?').run(a.cwd);
+    } finally {await rt.close().catch(()=>{});}
+    return parent;
+  }
   event(id,type,data) {this.db.prepare('INSERT INTO events(agent,time,type,data) VALUES (?,?,?,?)').run(id,new Date().toISOString(),type,JSON.stringify(data));}
   events(id,after=0,limit=50) {
     this.get(id);
@@ -55,10 +86,19 @@ export class Manager extends EventEmitter {
     const afterSeq=cursor[0] || 0;
     const offset=cursor[2] || 0;
     const eventId=options.eventId, budget=options.maxChars ?? 12000;
+    const onlyFinals=!options.includeProgress && !options.includeToolEvents;
     const rows=eventId === undefined
-      ? this.db.prepare(`SELECT * FROM events WHERE agent=? AND seq${typeof after==='string' ? '>=' : '>'}? ORDER BY seq`).all(id,afterSeq)
+      ? this.db.prepare(`SELECT * FROM events WHERE agent=? AND seq${typeof after==='string' ? '>=' : '>'}? ${onlyFinals ? "AND type='turn/end'" : ''} ORDER BY seq`).all(id,afterSeq)
       : this.db.prepare('SELECT * FROM events WHERE agent=? AND seq=?').all(id,eventId);
-    const projected=rows.map(row=>projectEvents([row],{includeToolEvents:options.includeToolEvents===true,eventId,maxChars:budget})[0]).filter(item=>item && !(item.type==='assistant/message' && !item.text));
+    const candidate=this.db.prepare("SELECT type,data FROM events WHERE agent=? AND seq<? AND type IN ('assistant/message','turn/start','turn/end') ORDER BY seq DESC LIMIT 1");
+    for(const row of rows) {
+      if(row.type!=='turn/end' || JSON.parse(row.data).reason?.kind!=='completed')continue;
+      const previous=candidate.get(id,row.seq);
+      if(previous?.type!=='assistant/message')continue;
+      const data=JSON.parse(previous.data);
+      if(!data.interrupted)row.finalText=data.text;
+    }
+    const projected=rows.map(row=>projectEvents([row],{...options,eventId,maxChars:budget})[0]).filter(item=>item && !(item.type==='assistant/message' && !item.text));
     let start=0;
     if (offset && projected[0]) start=0;
     const visible=[]; let continuation;
@@ -83,7 +123,8 @@ export class Manager extends EventEmitter {
       visible.push(item);
     }
     const consumed=continuation ? false : visible.length>=projected.length;
-    const next=continuation ?? (consumed ? (rows.at(-1)?.seq ?? eventId ?? afterSeq) : (visible.at(-1)?.event_id ?? afterSeq));
+    const tail=eventId ?? Math.max(afterSeq,this.db.prepare('SELECT MAX(seq) AS seq FROM events WHERE agent=?').get(id).seq ?? 0);
+    const next=continuation ?? (consumed ? tail : (visible.at(-1)?.event_id ?? afterSeq));
     return {events:visible,next_cursor:next,has_more:Boolean(continuation)||!consumed};
   }
   wait(id,seconds,signal) {
@@ -114,6 +155,7 @@ export class Manager extends EventEmitter {
   }
   async bootRuntime(a) {
     if(this.live.has(a.id))return this.live.get(a.id);
+    const parent=await this.ensureParent(a);
     const rt=new this.RuntimeClass(a,this.config); this.live.set(a.id,rt);
     rt.on('notification',(method,params)=>this.notification(a.id,method,params));
     rt.on('diagnostic',message=>this.event(a.id,'diagnostic',{message}));
@@ -124,7 +166,7 @@ export class Manager extends EventEmitter {
       this.event(a.id,'runtime/exit',{message:error.message});
     });
     try {
-      await rt.request('initialize',{cwd:a.cwd,provider:a.provider,model:a.model,reasoningEffort:a.effort,permission:a.permission,preset:a.preset,title:a.name||undefined,resume:a.persisted===true});
+      await rt.request('initialize',{cwd:a.cwd,provider:a.provider,model:a.model,reasoningEffort:a.effort,permission:a.permission,preset:a.preset,title:a.name||undefined,resume:a.persisted===true,parent,parentTitle:PARENT_TITLE});
       const identity=await rt.request('session/prepare',{sessionId:a.id});
       // DSH composes permission defaults from user settings; refuse to run a
       // session under a different preset than the parent requested.
@@ -150,7 +192,10 @@ export class Manager extends EventEmitter {
     if(method==='session.event') {
       const e=p.event;
       // Durable assistant text is enough for progress; avoid duplicating hidden reasoning streams.
-      if(e.type==='assistant/message') {
+      if(e.type==='turn/start') {
+        a.status='running';a.answer='';a.partial_text='';a.finish_reason=null;
+        this.event(id,e.type,{...e.data,session_seq:e.seq});
+      } else if(e.type==='assistant/message') {
         const blocks=e.data.message.content;
         a.answer=blocks.filter(b=>b.type==='text').map(b=>b.text).join('\n');
         this.event(id,e.type,{seq:e.seq,text:a.answer,usage:e.data.usage,interrupted:e.data.interrupted});

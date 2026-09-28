@@ -4,9 +4,9 @@ import {mkdtempSync,writeFileSync,mkdirSync,readFileSync,realpathSync,rmSync} fr
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
-import {projectRoot,resolveDshCli} from '../src/config.mjs';
+import {projectRoot} from '../src/config.mjs';
 
-test('packed CLI installs service, skill and Web adapter outside its disposable source', {skip:process.env.DSH_PACKAGE_TEST!=='1'},()=>{
+test('packed CLI installs service and skill outside its disposable source and removes the obsolete Web relay', {skip:process.env.DSH_PACKAGE_TEST!=='1'},()=>{
  const root=mkdtempSync(join(tmpdir(),'dsh-npm-test-'));
  try {
   const [pack]=JSON.parse(execFileSync('npm',['pack',projectRoot,'--pack-destination',root,'--json','--ignore-scripts'],{encoding:'utf8'}));
@@ -26,8 +26,7 @@ test('packed CLI installs service, skill and Web adapter outside its disposable 
   assert.equal(realpathSync(join(home,'.codex/skills/dsh-subagent')),join(installed,'skills/dsh-subagent'));
   const commands=readFileSync(calls,'utf8').trim().split('\n').map(JSON.parse);
   assert.ok(commands.some(row=>row[0]==='codex'&&row.includes(join(installed,'src/server.mjs'))));
-  execFileSync(process.execPath,[entry,'web'],{env:{...env,DSH_CLI:resolveDshCli()},stdio:'pipe'});
-  assert.ok(readFileSync(patch,'utf8').includes(join(installed,'src/web-plugin.mjs')));
+  assert.ok(!readFileSync(patch,'utf8').includes('dsh-subagent-web'),'setup removes an earlier Web relay entry');
   rmSync(cache,{recursive:true});
   const version=execFileSync(process.execPath,[join(installed,'src/cli.mjs'),'--version'],{env,encoding:'utf8'}).trim();
   assert.match(version,/^\d+\.\d+\.\d+$/);

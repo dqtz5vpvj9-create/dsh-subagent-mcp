@@ -21,6 +21,6 @@ test('public CLI starts the daemon and serves MCP over its stdio entrypoint',asy
   await client.connect(new StdioClientTransport({command:process.execPath,args:[cli],env}));
   const tools=await client.listTools();assert.ok(tools.tools.some(t=>t.name==='dsh_wait'));
   const response=await client.callTool({name:'dsh_list',arguments:{}});
-  assert.deepEqual(JSON.parse(response.content[0].text),[]);
+  assert.deepEqual(JSON.parse(response.content[0].text),{len:'49 chars',count:0,total:0,items:[]});
  } finally {await client.close();daemon.kill('SIGTERM');await exited;rmSync(state,{recursive:true});}
 });

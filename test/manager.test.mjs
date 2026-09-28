@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {Manager} from '../src/manager.mjs';
+import {Manager, PARENT_TITLE} from '../src/manager.mjs';
 class Fake extends EventEmitter {
   static all=[];
   constructor(a){super();this.id=a.id;this.agent=a;this.calls=[];Fake.all.push(this);}
@@ -128,12 +128,23 @@ test('MCP wait response delivers completion and permits a dependent parent call'
  t.after(async()=>{await client.close();await server.close();});
  const call=async(name,args)=>{const r=await client.callTool({name,arguments:args});assert.equal(r.isError,undefined);return JSON.parse(r.content[0].text);};
  const agent=await call('dsh_start',{cwd:dir,task:'produce evidence'});await tick();
+ const message=(sessionId,text)=>m.live.get(agent.id).emit('notification','session.event',{sessionId,event:{type:'assistant/message',data:{message:{content:[{type:'text',text}]}}}});
+ message(agent.id,'Now let me inspect');message('child','child progress');
+ const running=await call('dsh_events',{agent_id:agent.id});assert.deepEqual(running.events,[]);
+ const progress=await call('dsh_events',{agent_id:agent.id,include_progress:true});
+ assert.deepEqual(progress.events.map(e=>e.text),['Now let me inspect']);
+ const children=await call('dsh_events',{agent_id:agent.id,include_progress:true,include_descendants:true});
+ assert.deepEqual(children.events.map(e=>e.text),['Now let me inspect','child progress']);
+
  t.mock.timers.enable({apis:['setTimeout']});
  let returned=false;
  const pending=call('dsh_wait',{agent_id:agent.id}).then(result=>{returned=true;return result;});await tick();
  t.mock.timers.tick(26000);await tick();assert.equal(returned,false);
  m.live.get(agent.id).finish('evidence ready');
  const done=await pending;assert.equal(done.answer,'evidence ready');assert.equal(done.next_action,'review_and_continue');
+ const finalEvents=await call('dsh_events',{agent_id:agent.id,after:running.next_cursor});
+ assert.deepEqual(finalEvents.events.map(e=>[e.type,e.text]),[['assistant/final','evidence ready']]);
+
  const bounded=await call('dsh_wait',{agent_id:agent.id,seconds:60});assert.equal(bounded.wait_outcome,'settled');
  const next=await call('dsh_followup',{agent_id:agent.id,task:'check evidence'});
  assert.equal(next.status,'running');assert.equal(next.id,agent.id);
@@ -220,4 +231,34 @@ test('renaming an idle persisted agent boots, applies the title, and releases th
  const rt=Fake.all.at(-1);
  assert.equal(rt.calls[0][1].title,'named later');assert.equal(rt.calls[0][1].resume,true);
  assert.equal(m.live.has('idle'),false);assert.equal(m.get('idle').status,'completed');
+});
+
+
+test('a new root turn clears a previous reply even without a bridge followup', async t => {
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();
+ const rt=m.live.get(a.id);rt.finish('previous answer');
+ rt.emit('notification','session.event',{sessionId:a.id,event:{type:'turn/start',data:{}}});
+ assert.equal(m.get(a.id).status,'running');assert.equal(m.get(a.id).answer,'');
+ rt.emit('notification','session.event',{sessionId:a.id,event:{type:'turn/end',data:{reason:{kind:'completed'}}}});
+ rt.emit('notification','session.status',{sessionId:a.id,status:'idle'});
+ const {wait}=await import('../src/projection.mjs');
+ assert.equal(wait(await m.wait(a.id)).answer,undefined);
+});
+
+test('agents of one workspace share a virtual parent and never claim one another\'s',async t=>{
+  const{m,dir}=setup(t);
+  const a=await m.start({cwd:dir,task:'A'});await tick();
+  const b=await m.start({cwd:dir,task:'B'});await tick();
+  const initialize=id=>m.live.get(id).calls.find(call=>call[0]==='initialize')[1];
+  const parent=initialize(a.id).parent;
+  assert.match(parent,/^session-[0-9a-f-]{36}$/);
+  assert.equal(initialize(b.id).parent,parent,'one mount point per workspace');
+  assert.equal(initialize(a.id).parentTitle,PARENT_TITLE);
+  // A second workspace is a separate mount point, so the browser groups each
+  // under the directory its agents actually ran in.
+  const other=mkdtempSync(join(tmpdir(),'dsh-manager-other-'));
+  t.after(()=>rmSync(other,{recursive:true}));
+  const c=await m.start({cwd:other,task:'C'});await tick();
+  assert.notEqual(initialize(c.id).parent,parent);
+  assert.equal(m.parentFor(dir),parent,'the mint is stable across calls');
 });

@@ -107,7 +107,7 @@ export class ExternalSessions {
     const a=this.manager.get(id);
     if(event.seq<=(a.web_cursor??-1))return;
     a.web_cursor=event.seq;this.manager.save(a);
-    if(event.type==='assistant/message')this.manager.event(id,event.type,{seq:event.seq,text:textOf(event.data.message)});
+    if(event.type==='assistant/message')this.manager.event(id,event.type,{seq:event.seq,text:textOf(event.data.message),interrupted:event.data.interrupted});
     else if(/^(tool\/|turn\/|step\/|permission\/|sandbox\/|approval\/)/.test(event.type)) {
       this.manager.event(id,event.type,{...event.data,session_seq:event.seq});
     }

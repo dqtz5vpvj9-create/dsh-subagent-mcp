@@ -1,6 +1,5 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/hero.svg" alt="DSH Subagent MCP — Codex delegates to DeepSeek Harness, with live progress in DSH Web" width="1200">
-</p>
+<h1 align="center">DSH Subagent MCP</h1>
+<p align="center"><strong>Codex 把握全局，DeepSeek 并发执行。</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/dsh-subagent-mcp"><img src="https://img.shields.io/npm/v/dsh-subagent-mcp?style=flat-square&amp;color=CB3837" alt="npm version"></a>
@@ -14,98 +13,89 @@
 
 <p align="center">中文 · <a href="README.md">English</a> · <a href="#开始使用">开始使用</a> · <a href="docs/usage.md">使用指南</a></p>
 
-给 Codex 配一个能读代码、改文件、跑测试的 DeepSeek 编程代理。做完了继续追问，执行中随时查看进度，方向变了就叫停。
+**给 Codex 配一组能持续协作的 DeepSeek 子代理。** 实现、排查、测试可以并行展开。Codex 可以继续处理其他工作，也可以停止推理，等结果送达后自动醒来验收。
 
-**你在 Codex 里把握全局，DSH 在自己的会话里完成委派的工作。**
+每个子代理运行完整的 DeepSeek Harness，拥有自己的工具和会话。Codex 负责规划、委派和验收，DSH 负责把领到的任务做完。
 
-## 为持续协作而做
+## 交付任务，后台执行，完成自动回传
 
-| | 用起来是什么样 |
+```mermaid
+flowchart LR
+    C[Codex 规划并分工] --> A[DSH 实现]
+    C --> B[DSH 排查]
+    C --> D[DSH 测试]
+    A --> R[完成回调]
+    B --> R
+    D --> R
+    R --> P[Codex 自动唤醒并验收]
+```
+
+| 你关心的事 | 实际体验 |
 | :--- | :--- |
-| **默认标准模式** | 首个任务开始前加载 DSH 原生 standard preset，包含自动上下文压缩和工具结果裁剪。 |
-| **网页实时更新** | 安装 Web 适配器后，工具活动和流式回复直接出现在网页中，无须 Ctrl-R。 |
-| **完成后继续处理** | skill 要求父代理等待任务结束、检查产物并继续已授权的后续工作。 |
-| **接着原会话追问** | 让同一个代理继续分析、修改或验证，保留前文。 |
-| **连接已有 Web 会话** | 接入在 bridge 之外启动的会话，查看进展，并在原会话中排队发送或即时补充消息。 |
-| **随时中断和调整** | 改变方向时先停止当前任务，再把新要求交给它。 |
-| **按目录归组** | 会话登记到对应的 DSH 工作区，方便在网页端找回。 |
-| **后台持续执行** | 关闭 Codex 客户端后，本地服务仍可继续任务；重新连接后查看进度。 |
+| **做完会回来** | 每个任务完成后，以 Codex 原生工具结果回传。父代理空闲时自动唤醒，忙碌时在当前轮次接收。 |
+| **等待不空转** | 后台监听器在模型之外等待，无需让模型反复查询状态。 |
+| **独立并发** | 多个代理各领一份完整任务，分别完成、分别回传；用清晰的文件归属避免相互覆盖。 |
+| **上下文接得上** | 同一个 DSH 会话可以继续追问、修复和验证。新代理默认使用标准模式，包含自动上下文压缩和工具结果裁剪。 |
+| **随时掌握方向** | 明确选择只读或工作区写入权限，查看进度，需要时中断并调整任务。 |
+| **过程可以审查** | DSH 网页按工作区归组展示子代理历史，MCP 提供实时状态和工具活动。 |
 
 ## 开始使用
 
-需要 **Linux + systemd**、满足 [项目要求](package.json) 的 Node.js、Codex CLI，以及已配置模型凭据的 DSH。
+需要 **Linux + systemd、Node.js 24+、Python 3、Codex CLI，以及已配置模型凭据的 DSH**。原生回调需要 Codex App Server 支持 `turn/start.toolOutput`；[实测环境](docs/codex-callback-validation.md)为 CLI 0.157.1、App Server 0.157.0。
 
 ```sh
 npx -y dsh-subagent-mcp@latest setup --skill
 ```
 
-无需 clone。安装器会把运行文件放到固定的用户目录，后台服务和 skill 不依赖 npx 缓存。也可以在首次安装时加上 `--web`，一起接入已初始化的 DSH Web profile。
+安装器会部署持久运行的本地服务、注册 MCP 并链接 skill，运行文件不依赖 npx 临时缓存。如果 DeepSeek key 只在当前 shell 中，再加上 `--capture-key`。详见[安装与升级](docs/setup.md)。
 
-如果 DeepSeek key 只在当前 shell 的 `DEEPSEEK_API_KEY` 中，在安装命令后加上 `--capture-key`。详细配置见 [安装与凭据](docs/setup.md)。
-
-如果也使用 DSH 网页端，先初始化 Web profile，再安装适配器：
-
-```sh
-npx -y dsh-subagent-mcp@latest web
-```
-
-配置了 `patchReload: live` 的 Web profile 会自动加载；否则请等其任务结束后重启。详见 [网页接入与升级说明](docs/operations.md#live-progress-in-the-dsh-web-ui)。
-
-新开 Codex 会话，试试：
+新开 Codex 会话，直接安排：
 
 ```text
-用 $dsh-subagent 只读检查这个项目的错误处理。
-保留代理，方便我继续追问。
+用 $dsh-subagent 并发实现已经确认的方案。
+每个代理领取完整任务，明确文件归属，并完成相关测试。
+注册完成回调，结果送达后逐个验收和集成。
 ```
 
-skill 指导 Codex 如何委派和跟进，MCP 提供实际执行工具。DSH 的工作会显示为 Codex 中的 MCP 活动。
-
-## 从“帮我查一下”，到“就按这个改”
-
-完成结果通过等待中的工具调用返回。父代理需要保持当前轮次；这不会自动唤醒已经结束的对话。详见 [完成交接](docs/usage.md)。
-
-装好配套 skill 后，你可以这样使用：
+也可以先试一个小任务：
 
 ```text
-你 → Codex
 用 $dsh-subagent 查一下，为什么请求取消后 worker 还在运行。
-让它追踪代码并报告原因，先不要修改文件。
-
-你 → Codex
-DSH 现在查到哪了？
-
-你 → Codex
-让刚才那个代理继续看看，超时路径是不是也有同样的问题。
+保持只读，给出根因和对应代码位置。
 ```
 
-对于已获准修改文件的代理，还可以接着安排：
+之后随时问“查到哪了”，接着安排“让刚才那个代理修好并跑测试”，或者在方向变化时叫停。
 
-```text
-你 → Codex
-让 DSH 按确认的方案修复，并运行相关测试。
+## 把模型调用用在工作上
 
-你 → Codex
-先停一下，我们换个思路。确认它停止后，把这个新方案交给它：……
-```
+配套 skill 在每次启动或追问后注册一个后台监听器。监听器等待 DSH 结束，保存完整结果，再将答复作为原生 `dsh_completion` 工具结果送回。Codex 可以继续处理独立工作，也可以结束当前轮次，等待回调。
 
-## 默认标准模式，网页同步查看进度
+一次真实测试中，父 Codex 空闲 **55.834 秒，新增模型请求为 0，输入和输出 token 均为 0**，随后由 DSH 结果自动唤醒。委派和验收仍消耗 Codex token，DSH 也有自己的模型用量。这项测量针对等待阶段，不能换算成整个任务的节省百分比。详见[测试记录](docs/codex-callback-validation.md)。
 
-新子代理默认使用 DSH 的 **standard preset（标准模式）**，包含自动上下文压缩和工具结果裁剪，在首个任务开始前加载。后续追问和重启恢复沿用原有 preset。
+任务错误退出或上下文耗尽也会回传。子代理正在处理的单次工具失败不会提前结束整个任务；明确中断或关闭的代理不会触发继续执行的回调。
 
-需要固定提示词和单一持久 shell 时，可显式传入 `preset: "minimal"`；该模式不包含自动 compaction。已有会话保留原来的配置。
+## 过程看得见，后续接得上
 
-会话会按工作目录登记到 DSH 工作区。安装网页适配器后，**DSH 网页端会实时收到工具活动和流式回复，无须手动刷新**。你可以在 Codex 中委派任务，同时在浏览器里看执行过程；跟随最新输出时，长回复会随内容到达自动滚动。
+DSH 网页中，每个工作区有一条 **Claude Code / Codex 子代理** 会话。打开其中的子代理列表，即可查看各个任务的对话和轨迹，自己的会话列表不会被委派任务淹没。
 
-## 进一步使用
+网页读取的是持久化历史，可能落后于实际执行，其运行标识也不能代表 bridge 代理的实时状态。需要实时进度或工具活动时，直接让 Codex 通过 MCP 查询；追问和中断也由 bridge 处理。
 
-MCP 默认只返回精简结果：`dsh_start` 和 `dsh_followup` 返回回执，
-`dsh_status` 与 `dsh_list` 返回生命周期状态，`dsh_wait` 在结束后只返回一次最终答复。
-持久任务请省略 `seconds`。`dsh_events` 默认只返回新增的代理可见文本；需要工具摘要时显式选择，
-再用 `event_id` 定向读取单个工具事件。大事件会返回续读游标。只有兼容旧客户端时才使用 `legacy: true`。
+已经在普通 DSH Web 会话中开始了工作？可以用 `dsh_attach` 接入并继续原来的会话，详见[使用指南](docs/usage.md)。
 
-[追问、进度与中断](docs/usage.md) · [权限与架构](docs/architecture.md) · [服务管理](docs/operations.md) · [验证记录](docs/validation.md)
+## 进一步了解
 
-如果这个项目让你更方便地使用 DSH，欢迎点个 Star，也欢迎通过 [Issues](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/issues) 分享使用场景和遇到的问题。
+| 文档 | 内容 |
+| :--- | :--- |
+| [安装](docs/setup.md) | 凭据、持久安装、升级和旧会话迁移 |
+| [使用](docs/usage.md) | 工具、回调、追问、进度、外部会话和上下文预算 |
+| [架构](docs/architecture.md) | 进程归属、权限和生命周期 |
+| [运维](docs/operations.md) | 服务管理、回调恢复和网页历史 |
+| [回调验证](docs/codex-callback-validation.md) | 忙碌与空闲父代理的回传、等待期间的实际用量 |
+| [更新日志](CHANGELOG.md) | 版本变化和兼容性说明 |
+
+执行工具也可用于 Claude Code 等其他 MCP 客户端。这里的自动唤醒使用 Codex 专用回调；其他客户端采用各自支持的通知或等待方式。目前 DSH 在 Codex 中显示为 MCP 活动。
+
+如果它让你的工作更顺手，欢迎[点个 Star](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/stargazers)，也欢迎在 [Issues](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/issues) 分享用法和遇到的问题。
 
 ## 致谢
 

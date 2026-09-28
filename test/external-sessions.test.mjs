@@ -80,7 +80,8 @@ test('MCP attaches the exact external ID, retains permissions, and stores only a
   assert.ok(['starting','running'].includes(follow.status));
   const wait=f.call('dsh_wait',{agent_id:f.id});f.finish('New answer');
   const done=await wait;assert.equal(done.status,'completed');assert.equal(done.answer,'New answer');
-  const events=await f.call('dsh_events',{agent_id:f.id});assert.ok(events.events.some(x=>x.text==='New answer'));
+  const events=await f.call('dsh_events',{agent_id:f.id});
+  assert.deepEqual(events.events.map(x=>[x.type,x.text]),[['assistant/final','Prior answer'],['assistant/final','New answer']]);
 });
 
 test('busy external sessions reject followup but allow queue delivery without cancelling',async t=>{
