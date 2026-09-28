@@ -32,16 +32,16 @@ def acceptance(host, package, output, run):
         upload(host, ROOT/'test/e2e/windows-state.mjs', 'dsh-e2e-state.mjs')
         upload(host, ROOT/'test/e2e/windows-launch.ps1', 'dsh-e2e-launch.ps1')
         paths = json.loads(remote(host, 'node', 'dsh-e2e-state.mjs', 'prepare', run))
-        home = paths['root'].split('\\dsh-release-acceptance\\')[0]
         agent = None
         for phase in ['first', 'reopen']:
             command = subprocess.list2cmdline(['pwsh.exe','-NoLogo','-NoProfile','-File',
-                home+'\\dsh-e2e-launch.ps1','-Package',home+'\\dsh-e2e-candidate.tgz',
-                '-Workspace',paths['workspace'],'-Callbacks',paths['root']+'\\callbacks'])
+                'dsh-e2e-launch.ps1','-Run',run])
             terminal = pexpect.spawn(SSH[0], [*SSH[1:], '-tt', host, command],
                 env={**os.environ,'TERM':'xterm-256color'}, encoding='utf-8', codec_errors='replace',
                 timeout=30, dimensions=(40,140))
-            private_log = output/f'{host}-{phase}.terminal.log'
+            private_logs=Path('/mnt/cache/data-cache')/'dsh-release-e2e'/run
+            private_logs.mkdir(parents=True,exist_ok=True,mode=0o700)
+            private_log = private_logs/f'{host}-{phase}.terminal.log'
             with private_log.open('w', encoding='utf-8') as log:
                 terminal.logfile_read = log
                 ready = False
