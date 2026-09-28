@@ -16,7 +16,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 for (const longPath of [false,true])
 test(`public CLI serves MCP and protects active tasks (${longPath?'long Unicode':'ordinary'} state path)`,async()=>{
  const root=mkdtempSync(join(tmpdir(),'dsh-cli-test-'));
- const state=longPath?join(root,'long user directory 雪 '.repeat(5)):root;
+ const state=longPath?join(root,'long user directory 雪 '.repeat(5).trimEnd()):root;
  mkdirSync(state,{recursive:true});
  const env={...process.env,DSH_SUBAGENT_STATE:state,DSH_CLI:process.execPath};
  const cli=fileURLToPath(new URL('../src/cli.mjs',import.meta.url));

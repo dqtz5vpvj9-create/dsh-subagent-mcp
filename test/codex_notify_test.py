@@ -97,7 +97,7 @@ class CallbackTest(unittest.TestCase):
 
     def test_default_result_directory_uses_configured_tmpdir(self):
         directory, _ = self.launch(default_output=True)
-        self.assertEqual(directory.parent, self.root)
+        self.assertEqual(directory.parent.resolve(), self.root.resolve())
         self.events['agent-one'].set()
         self.until(directory, 'delivered')
         self.assertTrue((directory / 'result.json').exists())
