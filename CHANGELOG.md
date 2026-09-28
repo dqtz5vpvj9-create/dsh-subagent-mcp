@@ -2,6 +2,7 @@
 
 ## 0.6.2
 
+- Check the actual DSH SDK startup during installation and diagnostics. Existing DSH distributions without the required agent presets receive a compatible private runtime; the user's global DSH installation is preserved.
 - The single launch command updates an older managed installation before opening Codex. End-to-end acceptance includes upgrading a real 0.6.1 installation and continuing its persisted DSH agent.
 - Register and cancel completion callbacks directly through `dsh_watch` and `dsh_unwatch`, using Codex's MCP thread metadata. Sandboxed parents no longer need to execute a host callback script or access its private credentials.
 - Give Windows sandbox users read access to the published program files while retaining private permissions for credentials, history and callback connections.

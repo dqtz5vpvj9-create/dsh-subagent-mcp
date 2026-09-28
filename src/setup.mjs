@@ -4,6 +4,7 @@ import {homedir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
 import {projectRoot, resolveDshCli} from './config.mjs';
 import {locations, installation, installationFile, privateDirectory, readableProgramDirectory, writeJson, readJson} from './platform.mjs';
 import {commandSpec, packageEntry, runCommand} from './commands.mjs';
@@ -37,6 +38,21 @@ function ensureDependencies(installMissing) {
   const prefix = join(locations().data, 'dependencies');
   let dsh, codex;
   try {dsh = resolveDshCli();} catch (error) {if (process.env.DSH_CLI) throw error;}
+  if (dsh && !process.env.DSH_CLI) {
+    const usable = entry => {
+      try {
+        const require = createRequire(entry);
+        for (const name of ['@deepseek-ai/dsh-agent-presets','@deepseek-ai/dsh-sdk-jsonrpc-server','@deepseek-ai/dsh-sdk-protocol',
+          '@deepseek-ai/dsh-workspace','@deepseek-ai/dsh-tool-subagent/model-selection-settings']) require.resolve(name);
+        return true;
+      } catch {return false;}
+    };
+    if (!usable(dsh)) {
+      console.log(`Preparing DSH ${TESTED_DSH} with the required agent presets; your existing DSH installation is unchanged.`);
+      const managed = packageEntry(prefix, '@deepseek-ai/dsh', 'dsh');
+      dsh = managed && usable(managed) ? managed : null;
+    }
+  }
   try {codex = commandSpec('codex', {prefix, explicit: process.env.DSH_CODEX_CLI});} catch (error) {if (process.env.DSH_CODEX_CLI) throw error;}
   if (codex && !compatibleCodex(codex)) {
     if (process.env.DSH_CODEX_CLI) throw new Error(`DSH_CODEX_CLI requires Codex ${TESTED_CODEX} or newer for authenticated completion callbacks.`);
@@ -133,6 +149,8 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   const profile = join(process.env.DSH_HOME || join((await import('node:os')).homedir(), '.dsh'), 'profiles/codex-subagent/package.json');
   console.log('Preparing the DSH profile…');
   runCommand([process.execPath, dependencies.dsh], ['--profile', 'codex-subagent', ...(existsSync(profile) ? [] : ['--from-default-profile', 'sdk']), '--dump-config'], {stdio: ['ignore', 'ignore', 'pipe']});
+  console.log('Checking the DSH runtime…');
+  await (await import('./probe-runtime.mjs')).probeRuntime(dependencies.dsh);
   const root = source ? projectRoot : installPackage(projectRoot, join(paths.data, 'versions', version() + '-' + randomUUID().slice(0, 8)));
   if (!source) readableProgramDirectory(root);
   const env = Object.fromEntries(['PATH', 'DSH_HOME', 'TMPDIR', 'CODEX_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME', 'DSH_SUBAGENT_CONFIG', 'DSH_SUBAGENT_DATA'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
@@ -190,7 +208,7 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   }
   console.log('\nInstallation complete.');
   const {doctor} = await import('./doctor.mjs');
-  await doctor({json: false});
+  await doctor({json: false, runtimeChecked: true});
   if (!launching) console.log('\nOpen Codex with: npx -y dsh-subagent-mcp@latest');
   if (!existsSync(providerPath)) console.log('Use your existing DSH provider login, or set DEEPSEEK_API_KEY and rerun setup --capture-key.');
 }

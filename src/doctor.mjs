@@ -7,11 +7,15 @@ import {statusService} from './service.mjs';
 import {bridgeClient} from './bridge-client.mjs';
 import {codexCallback} from './codex-callback.mjs';
 
-export async function doctor({json = false} = {}) {
+export async function doctor({json = false, runtimeChecked = false} = {}) {
   const checks = [], record = installation();
   const add = (name, status, detail) => checks.push({name, status, detail});
   add('Node.js', Number(process.versions.node.split('.')[0]) >= 24 ? 'ok' : 'error', process.version);
   try {add('DSH', 'ok', resolveDshCli());} catch (error) {add('DSH', 'error', error.message);}
+  try {
+    if (!runtimeChecked) await (await import('./probe-runtime.mjs')).probeRuntime();
+    add('DSH runtime','ok','SDK and agent presets initialized');
+  } catch(error) {add('DSH runtime','error',error.message);}
   try {
     const spec = record?.codex || commandSpec('codex');
     add('Codex', 'ok', runCommand(spec, ['--version'], {stdio: 'pipe', encoding: 'utf8', timeout: 15000}).trim());

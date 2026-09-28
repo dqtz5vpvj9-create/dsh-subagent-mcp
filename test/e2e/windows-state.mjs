@@ -49,7 +49,11 @@ if(action==='prepare') {
       if(phase==='reopen'&&existsSync(join(root,'first.json'))&&receipt.thread_id===read(join(root,'first.json')).threadId)continue;
       if(receipt.status==='watching'&&!watching){watching=true;observation.watching=true;writeFileSync(observationPath,JSON.stringify(observation));}
       if(['setup_failed','delivery_failed'].includes(receipt.status))throw new Error(`Native callback ${receipt.status}: ${receipt.error}`);
-      if(receipt.status==='delivered')receipts.push(receipt);
+      if(receipt.status==='delivered') {
+        const result=read(receipt.result_path);
+        assert.equal(result.status,'completed',result.error||'The real DSH task failed.');
+        receipts.push(receipt);
+      }
     }
     const child=join(workspace,phase+'-child.txt'),parent=join(workspace,phase+'-verified.txt');
     if(receipts.length&&existsSync(child)&&existsSync(parent)) {

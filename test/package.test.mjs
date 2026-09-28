@@ -19,7 +19,11 @@ test(`packed ${service} installation survives cache removal, rolls back failed u
   const dsh = join(folder, 'dsh.mjs'), codex = join(folder, 'codex.mjs');
   const terminal = join(folder, 'terminal.mjs');
   writeFileSync(terminal, "Object.defineProperty(process.stdin, 'isTTY', {value: true});\n");
-  writeFileSync(dsh, '// Profile initialization fixture. Runtime lifecycle is tested separately.\n');
+  writeFileSync(dsh, `import {createInterface} from 'node:readline';
+if(process.argv.includes('--patch'))createInterface({input:process.stdin}).on('line',line=>{
+ const request=JSON.parse(line);console.log(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{}}));
+ if(request.method==='shutdown')process.exit(0);
+});\n`);
   writeFileSync(codex, `import {readFileSync,writeFileSync,existsSync,unlinkSync} from 'node:fs';
 import {WebSocketServer} from ${JSON.stringify(import.meta.resolve('ws'))};
 const a=process.argv.slice(2), path=${JSON.stringify(codexState)}, fail=${JSON.stringify(failOnce)};

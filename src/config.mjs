@@ -18,7 +18,7 @@ export function resolveDshCli() {
   const spec = commandSpec('dsh', {prefix: join(locations().data, 'dependencies')});
   return realpathSync(spec.at(-1));
 }
-export function runtimeConfig(state=stateDirectory()) {
+export function runtimeConfig(state=stateDirectory(),cli=resolveDshCli()) {
   mkdirSync(state,{recursive:true,mode:0o700});
   const patch=join(state,'bridge.patch.yml');
   const legacyPatch=join(state,'bridge-legacy.patch.yml');
@@ -49,5 +49,5 @@ export function runtimeConfig(state=stateDirectory()) {
   writeFileSync(patch,agentRows.map(id=>`- id: ${id}\n  disabled: true\n`).join('')+shared,{mode:0o600});
   // Existing conversations keep the tool composition under which they ran.
   writeFileSync(legacyPatch,shared,{mode:0o600});
-  return {database:join(state,'state.sqlite'),cli:resolveDshCli(),patch,legacyPatch};
+  return {database:join(state,'state.sqlite'),cli,patch,legacyPatch};
 }
