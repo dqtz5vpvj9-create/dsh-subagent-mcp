@@ -13,6 +13,7 @@ try {
   else if (['--help', '-h', 'help'].includes(command)) console.log(`DSH Subagent MCP ${version}
 
 Usage:
+  dsh-subagent-mcp                          Open Codex; install on first use
   dsh-subagent-mcp setup [--capture-key] [--service auto|background]
   dsh-subagent-mcp doctor [--json]
   dsh-subagent-mcp status [--json]
@@ -24,6 +25,7 @@ Usage:
   dsh-subagent-mcp dsh [DSH arguments]
   dsh-subagent-mcp notify --agent AGENT_ID
   dsh-subagent-mcp adopt
+  dsh-subagent-mcp mcp                      MCP stdio transport
 
 Windows, Linux and macOS. Node.js 24+; no Python required.
 Setup installs missing DSH/Codex dependencies, a per-user background service,
@@ -57,7 +59,7 @@ Upgrades and ordinary stops refuse to interrupt active tasks.`);
     (await import('./commands.mjs')).runCommand('npm', ['exec', '--yes', '--package=dsh-subagent-mcp@latest', '--', 'dsh-subagent-mcp', 'setup', ...(installation()?.skill === false ? ['--no-skill'] : [])]);
   } else if (command === 'uninstall') await (await import('./setup.mjs')).uninstall(flags({purge: {type: 'boolean'}}));
   else if (command === 'notify') await (await import('./notify.mjs')).notify(args);
-  else if (command === 'codex') await (await import('./codex-launch.mjs')).launchCodex(args);
+  else if (command === 'codex' || (command === undefined && process.stdin.isTTY)) await (await import('./codex-launch.mjs')).launchCodex(args);
   else if (command === 'dsh') {
     const env = {...process.env, ...installation()?.env, ...providerEnvironment()};
     (await import('./commands.mjs')).runCommand([process.execPath, resolveDshCli()], args, {env});
@@ -66,6 +68,6 @@ Upgrades and ordinary stops refuse to interrupt active tasks.`);
     flags({});
     if (process.platform !== 'linux') throw new Error('Legacy session adoption requires Linux flock. Normal DSH sessions work on all supported platforms.');
     await (await import('./adopt.mjs')).adopt();
-  } else if (command === undefined || command === '--daemon') await (await import('./server.mjs')).main();
+  } else if (command === undefined || command === 'mcp' || command === '--daemon') await (await import('./server.mjs')).main();
   else throw new Error('Unknown command: ' + command + '. Run dsh-subagent-mcp --help.');
 } catch (error) {console.error(error.message); process.exitCode = 1;}

@@ -10,8 +10,16 @@ import {commandSpec, runCommand} from './commands.mjs';
 import {installation, locations, privateDirectory, writeJson} from './platform.mjs';
 
 export async function launchCodex(args) {
-  const spec = installation()?.codex || commandSpec('codex', {explicit: process.env.DSH_CODEX_CLI});
-  if (['login', 'logout', 'doctor', '--version', '-V', '--help', '-h'].includes(args[0])) {
+  const passthrough = ['login', 'logout', 'doctor', '--version', '-V', '--help', '-h'].includes(args[0]);
+  let record = installation();
+  if (!record && !passthrough) {
+    console.log('First run: setting up DSH for Codex…');
+    await (await import('./setup.mjs')).setup([], {launching: true});
+    if (process.exitCode) return;
+    record = installation();
+  }
+  const spec = record?.codex || commandSpec('codex', {explicit: process.env.DSH_CODEX_CLI});
+  if (passthrough) {
     runCommand(spec, args); return;
   }
   const probe = net.createServer();

@@ -44,7 +44,7 @@ function ensureDependencies(installMissing) {
 
 export function registerCodex(record) {
   const env = ['DSH_SUBAGENT_STATE=' + record.state, 'DSH_SUBAGENT_CONFIG=' + locations().config];
-  runCommand(record.codex, ['mcp', 'add', 'dsh_subagent', ...env.flatMap(value => ['--env', value]), '--', record.node, join(record.root, 'src/cli.mjs')]);
+  runCommand(record.codex, ['mcp', 'add', 'dsh_subagent', ...env.flatMap(value => ['--env', value]), '--', record.node, join(record.root, 'src/cli.mjs'), 'mcp']);
 }
 
 function codexRegistration(codex) {
@@ -52,7 +52,7 @@ function codexRegistration(codex) {
     .find(server => server.name === 'dsh_subagent');
 }
 
-export async function setup(argv, {source = false} = {}) {
+export async function setup(argv, {source = false, launching = false} = {}) {
   const {values: args} = parseArgs({args: argv, options: {
     skill: {type: 'boolean'}, 'no-skill': {type: 'boolean'}, 'capture-key': {type: 'boolean'},
     'no-install-deps': {type: 'boolean'}, service: {type: 'string'}, yes: {type: 'boolean'},
@@ -159,8 +159,7 @@ export async function setup(argv, {source = false} = {}) {
   console.log('\nInstallation complete.');
   const {doctor} = await import('./doctor.mjs');
   await doctor({json: false});
-  console.log('\nOpen a new Codex session and ask: Use $dsh-subagent to investigate this repository.');
-  if (process.platform === 'win32') console.log('For automatic completion callbacks, start Codex with: npx -y dsh-subagent-mcp codex');
+  if (!launching) console.log('\nOpen Codex with: npx -y dsh-subagent-mcp@latest');
   if (!existsSync(providerPath)) console.log('Use your existing DSH provider login, or set DEEPSEEK_API_KEY and rerun setup --capture-key.');
 }
 

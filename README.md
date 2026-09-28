@@ -25,11 +25,10 @@ Give Codex a team of DeepSeek agents. Let them implement, investigate, and test 
 With [Node.js 24+](https://nodejs.org/) installed:
 
 ```sh
-npx -y dsh-subagent-mcp@latest setup
-npx -y dsh-subagent-mcp codex
+npx -y dsh-subagent-mcp@latest
 ```
 
-Windows, Linux and macOS use the same commands. Setup installs missing dependencies, connects the background service, and includes the skill. The launcher opens Codex with automatic completion callbacks. Existing accounts and configurations are reused; first-time users can follow the [account setup](docs/setup.md#connect-your-account).
+One command on Windows, Linux and macOS. On first use, it installs missing dependencies, connects the background service and skill, then opens Codex with automatic completion callbacks. Run the same command next time to open Codex directly. Existing accounts and configurations are reused; first-time users can follow the [account setup](docs/setup.md#connect-your-account).
 
 In Codex, ask:
 

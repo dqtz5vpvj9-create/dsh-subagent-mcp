@@ -3,13 +3,14 @@
 Windows, Linux and macOS use the same command:
 
 ```sh
-npx -y dsh-subagent-mcp@latest setup
+npx -y dsh-subagent-mcp@latest
 ```
 
-Run it in a normal terminal with Node.js 24 or newer. Setup reuses an existing
+Run it in a normal terminal with Node.js 24 or newer. On first use, it reuses an existing
 Node.js DSH installation and Codex CLI, or installs missing dependencies in a
 private user directory. It prepares the DSH profile, starts the background
-service, connects Codex's MCP tools, and installs the companion skill. Python,
+service, connects Codex's MCP tools, installs the companion skill, and opens
+Codex. Later runs open Codex directly without reinstalling. Python,
 root access and a global npm installation are not required.
 
 Missing dependencies are installed at the versions validated by this release:
@@ -59,10 +60,10 @@ npx -y dsh-subagent-mcp codex login
 
 ## Start working
 
-Start Codex through the supplied launcher:
+Use the same command whenever you want to work:
 
 ```sh
-npx -y dsh-subagent-mcp codex
+npx -y dsh-subagent-mcp@latest
 ```
 
 Then ask:
@@ -74,7 +75,8 @@ Find where request cancellation reaches the worker process.
 
 The launcher connects Codex to its own local App Server with authentication and
 passes the callback connection to the parent session. It uses your existing Codex
-configuration and login. Arguments such as `--cd` and `--model` are forwarded.
+configuration and login. Use the explicit `codex` subcommand to forward arguments
+such as `--cd` and `--model`; it also installs automatically on first use.
 Linux and macOS can use ordinary Codex sessions with their local control socket,
 or use the same launcher. Windows uses the launcher for automatic callbacks.
 
@@ -142,6 +144,9 @@ sessions remain intact. A globally installed CLI can then be removed with
 
 ## Advanced configuration
 
+- `setup` installs or updates the bridge without opening Codex.
+- `mcp` runs the MCP stdio transport. Existing clients that invoke the CLI with
+  no arguments over a pipe remain compatible; interactive terminals open Codex.
 - `--no-install-deps` requires preinstalled DSH and Codex.
 - `--no-skill` preserves a separately managed skill. Setup also preserves
   conflicting custom skill directories and tells you how to continue.

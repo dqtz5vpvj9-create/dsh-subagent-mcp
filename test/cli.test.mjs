@@ -34,7 +34,7 @@ test(`public CLI serves MCP and protects active tasks (${longPath?'long Unicode'
     rejected.write('{"authenticate":"wrong-token"}\n{"bridge_control":"status"}\n');
     await once(rejected,'close');assert.equal(data,'','unauthenticated callers must not receive service data');
   }
-  await client.connect(new StdioClientTransport({command:process.execPath,args:[cli],env}));
+  await client.connect(new StdioClientTransport({command:process.execPath,args:longPath?[cli,'mcp']:[cli],env}));
   const tools=await client.listTools();assert.ok(tools.tools.some(t=>t.name==='dsh_wait'));
   const response=await client.callTool({name:'dsh_list',arguments:{}});
   assert.deepEqual(JSON.parse(response.content[0].text),{len:'49 chars',count:0,total:0,items:[]});
