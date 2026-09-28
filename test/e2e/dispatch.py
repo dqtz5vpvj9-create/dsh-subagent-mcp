@@ -12,6 +12,7 @@ from pathlib import Path
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--runner',type=Path,required=True)
+parser.add_argument('--publish',action='store_true')
 args=parser.parse_args()
 repo='dqtz5vpvj9-create/dsh-subagent-mcp'
 label='dsh-e2e-'+uuid.uuid4().hex[:12]
@@ -21,6 +22,7 @@ configured=subprocess.run([str(args.runner/'config.sh'),'--unattended','--url',f
     cwd=args.runner,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
 print(configured.stdout.replace(token,'[redacted]'),flush=True)
 configured.check_returncode()
-subprocess.run(['gh','workflow','run','release-e2e.yml','--repo',repo,'--ref','main','-f','runner_label='+label],check=True)
+subprocess.run(['gh','workflow','run','release-e2e.yml','--repo',repo,'--ref','main','-f','runner_label='+label,
+    '-f','publish='+str(args.publish).lower()],check=True)
 print('Dispatched real end-to-end CI with '+label,flush=True)
 raise SystemExit(subprocess.call([str(args.runner/'run.sh')],cwd=args.runner))

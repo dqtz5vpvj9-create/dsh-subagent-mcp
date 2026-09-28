@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2
+
+- Resolve both local `node_modules/.bin` and global npm wrappers on Windows to the package's JavaScript entrypoint. Existing DSH installations no longer cause Node to execute a shell script during setup.
+- Prepare a private, compatible Codex installation when the existing CLI predates the authenticated callback launcher. Existing global installations remain available.
+- Gate publication on real end-to-end acceptance on two Windows machines: install the packed CLI, launch the Codex terminal, delegate a real DSH file task, deliver a native completion callback, verify the artifact in Codex, restart the service, reopen Codex, and continue the same DSH agent.
+
 ## 0.6.1 — 2026-09-28
 
 - Start with one command: `npx -y dsh-subagent-mcp@latest`. In a terminal, the first run installs the bridge and opens Codex; later runs open Codex directly. The explicit `codex` command also installs on first use.

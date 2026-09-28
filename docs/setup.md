@@ -17,6 +17,10 @@ Missing dependencies are installed at the versions validated by this release:
 DSH `0.1.5-rc.1` and Codex CLI `0.158.0`. Setup preserves existing installations
 and their provider configuration.
 
+If the existing Codex CLI is older than the supported callback launcher, setup
+installs a compatible copy for the bridge without replacing the global CLI.
+Local project installations and global npm installations are both supported.
+
 ## Connect your account
 
 If DSH already has working provider credentials, keep using them. To save a key

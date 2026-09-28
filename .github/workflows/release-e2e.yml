@@ -6,6 +6,10 @@ on:
         description: Label of the ephemeral trusted SSH controller
         required: true
         type: string
+      publish:
+        description: Publish the exact tested package after both hosts pass
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -25,6 +29,11 @@ jobs:
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
           python3 test/e2e/windows-release.py --package "$RUNNER_TEMP/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results"
+      - name: Publish the accepted package
+        if: inputs.publish
+        run: |
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
+          npm publish "$RUNNER_TEMP/dsh-subagent-mcp-$version.tgz" --access public
       - name: Publish assertion evidence
         if: always()
         uses: actions/upload-artifact@v4
