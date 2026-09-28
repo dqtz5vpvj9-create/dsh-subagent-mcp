@@ -13,9 +13,9 @@ original package cache. It does not restart the production service.
 ## Native Codex completion — 2026-09-28
 
 The current callback path was exercised with both active and idle parent turns.
-An idle parent resumed from native tool output, with zero model requests during
-the measured wait. See [the callback validation record](codex-callback-validation.md)
-for versions, measurements, and scope. `npm test` includes the WebSocket adapter
+An idle parent waited without spending GPT quota and resumed automatically when
+the result arrived. See [the callback validation record](codex-callback-validation.md)
+for versions, method, and scope. `npm test` includes the WebSocket adapter
 and detached Python listener tests.
 
 ## Initial bridge validation — 2026-09-12

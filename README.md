@@ -76,19 +76,11 @@ The bundled skill combines completion callbacks with three practices:
 
 These practices reduce parent execution and polling turns, unnecessary transcript transfer, and repeated review. The callback removes model-driven waiting; brief quality, parent-context size, and acceptance work still determine the rest of the overhead.
 
-### What the live test established
+### Waiting and resuming in practice
 
-The callback test used a real DSH task containing a 75-second shell delay. Parent telemetry measured a 55.834-second idle interval within that run.
+Live testing confirmed that Codex can stay idle while DSH works, without spending GPT quota on waiting. When the child finishes, its result arrives automatically and an idle Codex resumes to review it, without another user message. If Codex is already working, the result enters its current turn.
 
-| Observation | Result |
-| :--- | :--- |
-| New parent-model requests during the measured idle interval | **0** |
-| Parent input / output tokens during that interval | **0 / 0** |
-| Completion while the parent was active | Tool output entered the existing turn |
-| Completion while the parent was idle | The parent resumed automatically |
-| Extra user messages needed for delivery | **0** |
-
-This validates native completion delivery and zero model usage during the measured wait. Planning, dispatch, resumed reasoning, and acceptance still consume Codex tokens; DSH has its own provider usage. An overall savings percentage requires comparable complete-task measurements. The [validation record](docs/codex-callback-validation.md) describes the test and evidence scope.
+Assigning tasks and reviewing results still consume Codex tokens; DeepSeek usage is billed separately by its provider. The [validation record](docs/codex-callback-validation.md) describes the test environment and method.
 
 ## See the work, keep the conversation
 
@@ -106,7 +98,7 @@ Already working in an ordinary DSH Web session? Attach it with `dsh_attach` and 
 | [Usage](docs/usage.md) | Tools, callbacks, follow-ups, progress, external sessions, and context budgets |
 | [Architecture](docs/architecture.md) | Runtime ownership, permissions, and lifecycle |
 | [Operations](docs/operations.md) | Service management, callback recovery, and browser history |
-| [Callback validation](docs/codex-callback-validation.md) | Active/idle parent delivery and measured idle usage |
+| [Callback validation](docs/codex-callback-validation.md) | Completion delivery, idle waiting, and automatic resumption |
 | [Changelog](CHANGELOG.md) | Release changes and compatibility notes |
 
 The execution tools work with other MCP clients, including Claude Code. Automatic parent wakeup described here uses the Codex-specific callback; other clients use their supported notification or waiting mechanism. DSH appears as MCP activity in Codex today.

@@ -7,16 +7,15 @@ callback adapter.
 | Case | Observed result |
 | --- | --- |
 | Parent active | One `function_call_output` entered the existing turn |
-| Real DSH task | Completed a 75-second shell delay and returned the expected result |
+| Real DSH task | Completed a shell delay and returned the expected result |
 | Parent idle | Automatically started the next turn from tool output |
-| Measured idle interval | 55.834 seconds |
-| Model responses during that interval | 0 `token_usage_record` entries |
-| Input / output tokens during that interval | 0 / 0 |
-| Additional user messages for delivery | 0 |
+| Waiting | Parent telemetry showed no token usage while Codex was idle |
+| User interaction | Delivery required no follow-up message from the user |
 
-The result arrived inline, followed by one evidence review. Setup, dispatch,
-wakeup and acceptance consume model tokens and are outside the measured idle
-interval. This sample does not establish a total savings percentage, native
+The result arrived inline, followed by one evidence review. The parent rollout
+was checked for token usage between the end of its turn and completion delivery.
+Setup, dispatch, wakeup and acceptance consume model tokens and are outside that
+waiting period. This sample does not establish a total savings percentage, native
 task-panel rendering, cancellation races or restart recovery.
 
 Raw rollout evidence was retained locally; it is not shipped in the package.
