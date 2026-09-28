@@ -59,9 +59,11 @@ else process.exit(3);
     const record = JSON.parse(readFileSync(join(config, 'installation.json'), 'utf8'));
     installed = join(record.root, 'src/cli.mjs');
     if (service === 'background') assert.equal(record.backend, 'background');
+    else assert.equal(record.backend, {linux: 'systemd', darwin: 'launchd', win32: 'task-scheduler'}[process.platform]);
     console.log('Validated service backend:', record.backend, 'on', process.platform);
     assert.equal(nativeServiceConflict(record, {config: join(config, 'installation.json')}), false,
       'The service must recognize its own configuration after registration.');
+    if (service === 'auto') assert.equal(nativeServiceConflict(record, {config: join(folder, 'other-config/installation.json')}), true);
     assert.ok(record.root.startsWith(join(env.DSH_SUBAGENT_DATA, 'versions')));
     assert.equal(realpathSync(join(env.CODEX_HOME, 'skills/dsh-subagent')), realpathSync(join(record.root, 'skills/dsh-subagent')));
     assert.ok(!readFileSync(join(config, 'installation.json'), 'utf8').includes('fixture-private-key'));
