@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3 — 2026-09-28
+
+- Refine the README artwork: a floating blue Codex emblem exchanges tasks and results with the whale-girl agents, without a slab or pedestal. Runtime behavior is unchanged.
+
 ## 0.5.2 — 2026-09-28
 
 - Give the README a distinct visual identity with the Codex terminal emblem and a whale-girl coding crew based on the supplied character reference.
