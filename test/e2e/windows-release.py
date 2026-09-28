@@ -21,6 +21,7 @@ SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-o', 'LogLevel=
        '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4']
 STOPPING=threading.Event()
 PROCESSES=set()
+TRANSPORTS={}
 TERMINAL_SPACE=r'(?:\s|\x1b\[[0-?]*[ -/]*[@-~])*'
 APPROVAL=TERMINAL_SPACE.join(['Allow','the','dsh_subagent','MCP','server','to','run','tool'])+TERMINAL_SPACE+r'"(dsh_start|dsh_followup|dsh_watch)"'
 
@@ -31,7 +32,7 @@ def cancel_run(_signal, _frame):
 
 def remote(host, *args, timeout=180):
     command = subprocess.list2cmdline(list(args))
-    process=subprocess.Popen([*SSH,host,command],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    process=subprocess.Popen([*SSH,*TRANSPORTS.get(host,[]),host,command],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     PROCESSES.add(process)
     try:
         stdout,stderr=process.communicate(timeout=timeout)
@@ -42,7 +43,18 @@ def remote(host, *args, timeout=180):
     finally:PROCESSES.discard(process)
 
 def upload(host, source, target):
-    subprocess.run(['scp', '-q', str(source), f'{host}:{target}'], check=True, timeout=120)
+    subprocess.run(['scp','-q','-o','ConnectTimeout=20',*TRANSPORTS.get(host,[]),str(source),f'{host}:{target}'],check=True,timeout=120)
+
+def connect_host(host, directory):
+    options=['-o','ControlPath='+str(directory/('ssh-'+host))]
+    # Only connection setup is retried. A lost response to a mutating command
+    # must still fail; the test never replays a model prompt or installation.
+    for attempt in range(3):
+        result=subprocess.run([*SSH,*options,'-M','-N','-f','-o','ControlPersist=600',host],text=True,capture_output=True,timeout=90)
+        if result.returncode==0:
+            TRANSPORTS[host]=options
+            return
+        if attempt==2:raise RuntimeError(f'{host} SSH connection failed: {result.stderr.strip()}')
 
 def observe(host, run, phase, agent):
     # Reconnect the read-only observer after a transport failure. Never replay
@@ -62,6 +74,9 @@ def acceptance(host, package, output, run):
     report = {'host': host, 'run': run, 'ok': False, 'phases': []}
     terminal = None
     try:
+        private_logs=Path('/mnt/cache/data-cache')/'dsh-release-e2e'/run
+        private_logs.mkdir(parents=True,exist_ok=True,mode=0o700)
+        connect_host(host,private_logs)
         with tarfile.open(package) as archive:
             expected_version=json.load(archive.extractfile('package/package.json'))['version']
         upload(host, package, f'dsh-e2e-candidate-{run}.tgz')
@@ -72,11 +87,9 @@ def acceptance(host, package, output, run):
         for phase in ['first', 'reopen']:
             command = subprocess.list2cmdline(['pwsh.exe','-NoLogo','-NoProfile','-File',
                 'dsh-e2e-launch.ps1','-Run',run])
-            terminal = pexpect.spawn(SSH[0], [*SSH[1:], '-tt', host, command],
+            terminal = pexpect.spawn(SSH[0], [*SSH[1:], *TRANSPORTS[host], '-tt', host, command],
                 env={**os.environ,'TERM':'xterm-256color'}, encoding='utf-8', codec_errors='replace',
                 timeout=30, dimensions=(40,140))
-            private_logs=Path('/mnt/cache/data-cache')/'dsh-release-e2e'/run
-            private_logs.mkdir(parents=True,exist_ok=True,mode=0o700)
             private_log = private_logs/f'{host}-{phase}.terminal.log'
             with private_log.open('w', encoding='utf-8') as log:
                 terminal.logfile_read = log
@@ -155,6 +168,7 @@ def acceptance(host, package, output, run):
         report['ok']=True
     except Exception as error:
         report['error']=str(error)
+        if isinstance(error,subprocess.CalledProcessError):report['transportError']=error.stderr
         try: report['diagnostic']=json.loads(remote(host,'node','dsh-e2e-state.mjs','diagnose',run))
         except Exception: pass
     finally:
@@ -164,6 +178,8 @@ def acceptance(host, package, output, run):
             try: report['cleanup']=json.loads(remote(host,'node','dsh-e2e-state.mjs','cleanup',run))
             except Exception as error: report['cleanupError']=str(error)
         (output/f'{host}.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+        if host in TRANSPORTS:
+            subprocess.run([*SSH,*TRANSPORTS[host],'-O','exit',host],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
     return report
 
 if __name__=='__main__':
