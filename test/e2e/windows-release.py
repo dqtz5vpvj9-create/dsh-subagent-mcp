@@ -49,7 +49,11 @@ def acceptance(host, package, output, run):
                 while time.monotonic()<deadline:
                     found=terminal.expect([r'Ask Codex to do anything',r'Yes, I trust',r'Continue anyway\?',
                         '\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT], timeout=2)
-                    if found==0: ready=True;break
+                    if found==0:
+                        # Wait for the remote thread to load; its initial composer
+                        # is visible before the model/session footer is ready.
+                        terminal.expect(r'GPT-6-Astra',timeout=120)
+                        ready=True;break
                     if found==1: terminal.send('1\r')
                     elif found==2: terminal.send('y\r')
                     elif found==3: terminal.send('\x1b[1;1R')
@@ -65,7 +69,11 @@ def acceptance(host, package, output, run):
                     f'read {phase}-child.txt, verify its exact content, and write exactly {marker}_VERIFIED into '
                     f'{phase}-verified.txt. Then reply ACCEPTED. Do not write the child file yourself. '
                     'Do not read credentials, change installation settings, or contact other sessions.')
-                terminal.send('\x1b[200~'+prompt+'\x1b[201~\r')
+                terminal.send('\x1b[200~'+prompt+'\x1b[201~')
+                # Separate paste and Enter so Codex's paste-burst handling does
+                # not absorb the submission key into the pasted message.
+                time.sleep(1)
+                terminal.send('\r')
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     future=pool.submit(remote,host,'node','dsh-e2e-state.mjs','wait',run,phase,*([agent] if agent else []),timeout=630)
                     while not future.done():

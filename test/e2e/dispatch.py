@@ -6,6 +6,7 @@ credentials are uploaded to GitHub. The runner deregisters after its one job.
 """
 import argparse
 import json
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -25,4 +26,6 @@ configured.check_returncode()
 subprocess.run(['gh','workflow','run','release-e2e.yml','--repo',repo,'--ref','main','-f','runner_label='+label,
     '-f','publish='+str(args.publish).lower()],check=True)
 print('Dispatched real end-to-end CI with '+label,flush=True)
-raise SystemExit(subprocess.call([str(args.runner/'run.sh')],cwd=args.runner))
+runner_env={**os.environ,'DOTNET_SYSTEM_NET_DISABLEIPV6':'1',
+    'DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2SUPPORT':'0'}
+raise SystemExit(subprocess.call([str(args.runner/'run.sh')],cwd=args.runner,env=runner_env))
