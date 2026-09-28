@@ -8,7 +8,7 @@ import {projectRoot, resolveDshCli} from './config.mjs';
 import {locations, installation, installationFile, privateDirectory, writeJson, readJson} from './platform.mjs';
 import {commandSpec, packageEntry, runCommand} from './commands.mjs';
 import {installPackage} from './install-package.mjs';
-import {backendDefault, installService, startService, stopService, statusService, removeService, systemdQuote} from './service.mjs';
+import {backendDefault, installService, startService, stopService, statusService, removeService, systemdQuote, nativeServiceConflict} from './service.mjs';
 import {bridgeClient} from './bridge-client.mjs';
 
 export const TESTED_DSH = '0.1.5-rc.1';
@@ -61,7 +61,7 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Node.js 24 or newer is required. Install it from https://nodejs.org/ and rerun setup.');
   const allowed = {linux: ['systemd', 'background'], darwin: ['launchd', 'background'], win32: ['task-scheduler', 'background']}[process.platform];
   const previous = installation();
-  const backend = args.service === 'auto' ? backendDefault() : args.service || previous?.backend || backendDefault();
+  let backend = args.service === 'auto' ? backendDefault() : args.service || previous?.backend || backendDefault();
   if (!allowed.includes(backend)) throw new Error('Supported service choices on this system: ' + allowed.join(', '));
   if (!args['no-skill'] && existingSkill() && !ownsSkill()) throw new Error('A custom skill exists at ' + skillTarget() + '. It was preserved. Use --no-skill to keep managing it yourself.');
   const status = await statusService();
@@ -73,6 +73,11 @@ export async function setup(argv, {source = false, launching = false} = {}) {
     (!candidateUnit.includes('DSH_SUBAGENT_STATE=') && paths.state === join(homedir(), '.local/state/dsh-subagent-mcp'))) ? candidateUnit : null;
   const legacyRunning = !previous && process.platform === 'linux' && existsSync(join(paths.state, 'server.sock'));
   const legacyEnabled = legacyUnit && spawnSync('systemctl', ['--user', 'is-enabled', 'dsh-subagent-mcp.service'], {stdio: 'ignore'}).status === 0;
+  if (!legacyUnit && nativeServiceConflict({backend})) {
+    if (args.service && args.service !== 'auto') throw new Error('Another installation owns the login service. Use --service background for this configuration.');
+    console.warn('Another installation owns the login service. Using a separate background process.');
+    backend = 'background';
+  }
   if (legacyRunning) {
     let client;
     try {
@@ -112,7 +117,7 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   try {
     if (previous && previous.backend !== backend) await removeService(previous);
     writeJson(installationFile(), record);
-    try {installService(record);}
+    try {installService(record, {allowLegacy: Boolean(legacyUnit)});}
     catch (error) {
       if (args.service && args.service !== 'auto') throw error;
       console.warn('Login startup could not be registered: ' + error.message + '\nUsing a background process that starts when Codex connects.');

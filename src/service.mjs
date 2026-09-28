@@ -1,4 +1,4 @@
-import {existsSync, mkdirSync, writeFileSync, unlinkSync, openSync, closeSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, openSync, closeSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
@@ -37,7 +37,32 @@ export function serviceDefinition(record, {home = homedir(), user = '', config =
   return null;
 }
 
-export function installService(record) {
+export function serviceBelongsTo(text, backend, config = installationFile()) {
+  if (backend === 'systemd') return text.includes('"--config" ' + systemdQuote(config));
+  if (backend === 'launchd') return text.includes('<string>--config</string><string>' + xml(config) + '</string>');
+  const decoded = text.replaceAll('&quot;', '"').replaceAll('&apos;', "'").replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
+  return decoded.includes('"--config" ' + windowsQuote(config));
+}
+
+// Login services have one name per OS user. An isolated configuration must not
+// replace or remove the service registered by another installation.
+export function nativeServiceConflict(record, {home = homedir(), config = installationFile()} = {}) {
+  const definition = serviceDefinition(record, {home, config});
+  if (!definition) return false;
+  let text;
+  if (record.backend === 'task-scheduler') {
+    const result = spawnSync('schtasks.exe', ['/Query', '/TN', label, '/XML'], {windowsHide: true});
+    if (result.status !== 0) return false;
+    text = result.stdout.toString(result.stdout[1] === 0 || result.stdout[0] === 255 ? 'utf16le' : 'utf8');
+  } else {
+    if (!existsSync(definition.path)) return false;
+    text = readFileSync(definition.path, 'utf8');
+  }
+  return !serviceBelongsTo(text, record.backend, config);
+}
+
+export function installService(record, {allowLegacy = false} = {}) {
+  if (!allowLegacy && nativeServiceConflict(record)) throw new Error('The login service belongs to another installation; it was preserved.');
   const user = process.platform === 'win32' ? runCommand(['whoami.exe'], [], {stdio: 'pipe', encoding: 'utf8'}).trim() : '';
   const definition = serviceDefinition(record, {user});
   if (!definition) return;
@@ -93,7 +118,9 @@ export async function stopService({force = false} = {}) {
 
 export async function removeService(record = installation()) {
   if (!record) return;
+  const foreign = nativeServiceConflict(record);
   await stopService();
+  if (foreign) {console.warn('The login service belongs to another installation; it was preserved.'); return;}
   if (record.backend === 'systemd') runCommand(['systemctl'], ['--user', 'disable', '--now', unit]);
   else if (record.backend === 'launchd') spawnSync('launchctl', ['bootout', `gui/${process.getuid()}/${label}`], {stdio: 'ignore'});
   else if (record.backend === 'task-scheduler') runCommand(['schtasks.exe'], ['/Delete', '/TN', label, '/F']);

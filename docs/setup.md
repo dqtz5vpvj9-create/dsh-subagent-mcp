@@ -120,6 +120,9 @@ running. You can choose this mode explicitly with `setup --service background`.
 Setup reports the selected backend. It does not ask for elevated privileges to
 register a login service.
 
+If another installation owns the per-user login service, automatic setup uses a
+separate background process. It preserves the existing service and tasks.
+
 On Windows, local IPC uses an authenticated loopback connection and private
 Windows ACLs. Linux and macOS use a mode-0600 Unix socket in a private directory.
 No bridge port is exposed to the network.

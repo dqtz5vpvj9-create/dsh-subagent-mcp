@@ -4,6 +4,7 @@
 
 - Start with one command: `npx -y dsh-subagent-mcp@latest`. In a terminal, the first run installs the bridge and opens Codex; later runs open Codex directly. The explicit `codex` command also installs on first use.
 - Keep `setup` for installation and configuration without launching. New MCP registrations use the explicit `mcp` transport; existing piped connections without arguments remain compatible.
+- Preserve login services owned by another installation. Automatic setup uses a separate background process when configuration directories differ; explicit conflicting service installation and removal are refused.
 - Update the English and Chinese quick starts to use the single entry point.
 
 ## 0.6.0 — 2026-09-28
