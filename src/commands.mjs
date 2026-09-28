@@ -1,5 +1,5 @@
 import {existsSync, readFileSync, realpathSync} from 'node:fs';
-import {delimiter, dirname, join, extname} from 'node:path';
+import {delimiter, dirname, join, extname, basename} from 'node:path';
 import {spawnSync} from 'node:child_process';
 
 const packages = {dsh: '@deepseek-ai/dsh', codex: '@openai/codex', npm: 'npm'};
@@ -13,22 +13,31 @@ export function packageEntry(prefix, name, command) {
   return bin && existsSync(join(root, bin)) ? join(root, bin) : null;
 }
 
-// Resolve npm's Windows .cmd wrappers to their JavaScript entrypoints. Passing
-// them to a shell would reinterpret paths and arguments containing &, %, etc.
-export function commandSpec(name, {prefix, explicit, env = process.env} = {}) {
+function npmBinEntry(dir, name) {
+  if (!packages[name]) return null;
+  // Global npm shims live at the prefix; local/npx shims live in node_modules/.bin.
+  const prefix = basename(dir) === '.bin' && basename(dirname(dir)) === 'node_modules'
+    ? dirname(dirname(dir)) : dir;
+  return packageEntry(prefix, packages[name], name);
+}
+
+// Resolve npm shims through package metadata, never execute shell scripts as JS.
+// This also avoids shell interpretation of paths containing &, %, or spaces.
+export function commandSpec(name, {prefix, explicit, env = process.env, platform = process.platform} = {}) {
   if (explicit) return /\.[cm]?js$/i.test(explicit) ? [process.execPath, realpathSync(explicit)] : [explicit];
-  const dirs = (env.PATH || '').split(delimiter).filter(Boolean);
+  const dirs = (env.PATH || env.Path || '').split(platform === 'win32' ? ';' : delimiter).filter(Boolean);
   for (const dir of dirs) {
-    for (const suffix of process.platform === 'win32' ? ['.exe', '.cmd', ''] : ['']) {
+    for (const suffix of platform === 'win32' ? ['.exe', '.cmd', '.ps1', ''] : ['']) {
       const candidate = join(dir, name + suffix);
       if (!existsSync(candidate)) continue;
-      if (suffix === '.cmd') {
-        const entry = packageEntry(dir, packages[name], name);
-        if (entry) return [process.execPath, entry];
-        continue;
-      }
+      const entry = suffix !== '.exe' && npmBinEntry(dir, name);
+      if (entry) return [process.execPath, realpathSync(entry)];
+      if (suffix === '.cmd' || suffix === '.ps1') continue;
       const file = realpathSync(candidate);
-      return /\.[cm]?js$/i.test(extname(file)) ? [process.execPath, file] : [candidate];
+      if (/\.[cm]?js$/i.test(extname(file))) return [process.execPath, file];
+      // DSH is loaded by Node with the bridge plugin. An unresolved shell shim
+      // or native DSH executable cannot serve as its JavaScript entrypoint.
+      if (name !== 'dsh') return [candidate];
     }
   }
   const entry = packages[name] && [prefix, dirname(process.execPath), join(dirname(process.execPath), '..', 'lib')]

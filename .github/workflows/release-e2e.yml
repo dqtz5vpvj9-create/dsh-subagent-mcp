@@ -1,0 +1,34 @@
+name: Real end-to-end release acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: Label of the ephemeral trusted SSH controller
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: real-windows-release-acceptance
+  cancel-in-progress: false
+jobs:
+  codex-dsh-real:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, '${{ inputs.runner_label }}']
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci --ignore-scripts
+      - name: Pack the release candidate
+        run: npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+      - name: Real Codex and DSH on win and dorm
+        run: |
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
+          python3 test/e2e/windows-release.py --package "$RUNNER_TEMP/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results"
+      - name: Publish assertion evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-codex-dsh-acceptance
+          path: '${{ runner.temp }}/e2e-results/*.json'
+          if-no-files-found: error

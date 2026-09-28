@@ -23,7 +23,7 @@ test(`packed ${service} installation survives cache removal, rolls back failed u
   writeFileSync(codex, `import {readFileSync,writeFileSync,existsSync,unlinkSync} from 'node:fs';
 import {WebSocketServer} from ${JSON.stringify(import.meta.resolve('ws'))};
 const a=process.argv.slice(2), path=${JSON.stringify(codexState)}, fail=${JSON.stringify(failOnce)};
-if(a[0]==='--version')console.log('codex fixture');
+if(a[0]==='--version')console.log('codex-cli 0.158.0');
 else if(a[0]==='mcp'&&a[1]==='add'){
  if(existsSync(fail)){unlinkSync(fail);console.error('registration fixture failure');process.exit(2);}
  const i=a.indexOf('--');writeFileSync(path,JSON.stringify({transport:{command:a[i+1],args:a.slice(i+2)}}));

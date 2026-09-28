@@ -23,11 +23,28 @@ function ownsSkill() {
   catch {return false;}
 }
 
+function compatibleCodex(spec) {
+  const [file, ...prefix] = spec;
+  const result = spawnSync(file, [...prefix, '--version'], {encoding: 'utf8', windowsHide: true});
+  const found = result.stdout?.match(/codex(?:-cli)? (\d+)\.(\d+)\.(\d+)/);
+  if (result.status !== 0 || !found) return false;
+  const actual = found.slice(1).map(Number), required = TESTED_CODEX.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (actual[i] !== required[i]) return actual[i] > required[i];
+  return true;
+}
+
 function ensureDependencies(installMissing) {
   const prefix = join(locations().data, 'dependencies');
   let dsh, codex;
   try {dsh = resolveDshCli();} catch (error) {if (process.env.DSH_CLI) throw error;}
   try {codex = commandSpec('codex', {prefix, explicit: process.env.DSH_CODEX_CLI});} catch (error) {if (process.env.DSH_CODEX_CLI) throw error;}
+  if (codex && !compatibleCodex(codex)) {
+    if (process.env.DSH_CODEX_CLI) throw new Error(`DSH_CODEX_CLI requires Codex ${TESTED_CODEX} or newer for authenticated completion callbacks.`);
+    console.log(`Preparing Codex ${TESTED_CODEX} for completion callbacks; your existing Codex installation is unchanged.`);
+    codex = null;
+    const managed = packageEntry(prefix, '@openai/codex', 'codex');
+    if (managed && compatibleCodex([process.execPath, managed])) codex = [process.execPath, managed];
+  }
   const missing = [...(!dsh ? [`@deepseek-ai/dsh@${TESTED_DSH}`] : []), ...(!codex ? [`@openai/codex@${TESTED_CODEX}`] : [])];
   if (missing.length) {
     if (!installMissing) throw new Error('Missing dependencies: ' + missing.join(', ') + '. Rerun setup without --no-install-deps.');
@@ -37,7 +54,7 @@ function ensureDependencies(installMissing) {
     if (!existsSync(join(prefix, 'package.json'))) writeJson(join(prefix, 'package.json'), {name: 'dsh-subagent-dependencies', private: true});
     runCommand('npm', ['install', '--prefix', prefix, '--save-exact', '--no-audit', '--no-fund', ...missing]);
     dsh ||= packageEntry(prefix, '@deepseek-ai/dsh', 'dsh');
-    codex ||= commandSpec('codex', {prefix});
+    codex ||= [process.execPath, packageEntry(prefix, '@openai/codex', 'codex')];
   }
   return {dsh, codex};
 }
