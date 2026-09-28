@@ -27,5 +27,6 @@ subprocess.run(['gh','workflow','run','release-e2e.yml','--repo',repo,'--ref','m
     '-f','publish='+str(args.publish).lower()],check=True)
 print('Dispatched real end-to-end CI with '+label,flush=True)
 runner_env={**os.environ,'DOTNET_SYSTEM_NET_DISABLEIPV6':'1',
-    'DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2SUPPORT':'0'}
+    'DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2SUPPORT':'0',
+    'NODE_OPTIONS':(os.environ.get('NODE_OPTIONS','')+' --dns-result-order=ipv4first').strip()}
 raise SystemExit(subprocess.call([str(args.runner/'run.sh')],cwd=args.runner,env=runner_env))

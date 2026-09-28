@@ -7,21 +7,39 @@ import argparse
 import concurrent.futures
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import tarfile
 import time
+import threading
 import uuid
 import pexpect
 
 ROOT = Path(__file__).resolve().parents[2]
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-o', 'LogLevel=ERROR',
        '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4']
+STOPPING=threading.Event()
+PROCESSES=set()
+TERMINAL_SPACE=r'(?:\s|\x1b\[[0-?]*[ -/]*[@-~])*'
+APPROVAL=TERMINAL_SPACE.join(['Allow','the','dsh_subagent','MCP','server','to','run','tool'])+TERMINAL_SPACE+r'"(dsh_start|dsh_followup|dsh_watch)"'
+
+def cancel_run(_signal, _frame):
+    STOPPING.set()
+    for process in list(PROCESSES):
+        if process.poll() is None:process.terminate()
 
 def remote(host, *args, timeout=180):
     command = subprocess.list2cmdline(list(args))
-    return subprocess.run([*SSH, host, command], check=True, text=True,
-                          capture_output=True, timeout=timeout).stdout.strip()
+    process=subprocess.Popen([*SSH,host,command],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    PROCESSES.add(process)
+    try:
+        stdout,stderr=process.communicate(timeout=timeout)
+        if process.returncode:raise subprocess.CalledProcessError(process.returncode,process.args,stdout,stderr)
+        return stdout.strip()
+    except subprocess.TimeoutExpired:
+        process.kill();process.communicate();raise
+    finally:PROCESSES.discard(process)
 
 def upload(host, source, target):
     subprocess.run(['scp', '-q', str(source), f'{host}:{target}'], check=True, timeout=120)
@@ -31,6 +49,7 @@ def observe(host, run, phase, agent):
     # the Codex prompt or the DSH task. The host retains the original deadline
     # and pending-callback observation across observer connections.
     for attempt in range(3):
+        if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
         try:
             return remote(host,'node','dsh-e2e-state.mjs','wait',run,phase,
                           *([agent] if agent else []),timeout=630)
@@ -108,8 +127,9 @@ def acceptance(host, package, output, run):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     future=pool.submit(observe,host,run,phase,agent)
                     while not future.done():
+                        if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
                         found=terminal.expect(['\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT,
-                            r'Allow the dsh_subagent MCP server to run tool "(dsh_start|dsh_followup|dsh_watch)"'],timeout=2)
+                            APPROVAL],timeout=2)
                         if found==0:terminal.send('\x1b[1;1R')
                         elif found==1:raise RuntimeError('Codex exited before completing the delegated task.')
                         elif found==3:
@@ -117,7 +137,7 @@ def acceptance(host, package, output, run):
                             # requested test operation. Keep the user's policy;
                             # never select session-wide or permanent approval.
                             name=terminal.match.group(1)
-                            terminal.expect(r'enter to submit',timeout=30)
+                            terminal.expect(TERMINAL_SPACE.join(['enter','to','submit']),timeout=30)
                             terminal.send('\r')
                             report.setdefault('oneTimeApprovals',[]).append({'phase':phase,'tool':name})
                     phase_report=json.loads(future.result())
@@ -147,6 +167,8 @@ def acceptance(host, package, output, run):
     return report
 
 if __name__=='__main__':
+    signal.signal(signal.SIGINT,cancel_run)
+    signal.signal(signal.SIGTERM,cancel_run)
     parser=argparse.ArgumentParser()
     parser.add_argument('--package',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)

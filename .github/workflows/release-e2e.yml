@@ -36,6 +36,7 @@ jobs:
           npm publish "$RUNNER_TEMP/dsh-subagent-mcp-$version.tgz" --access public
       - name: Publish assertion evidence
         if: always()
+        timeout-minutes: 3
         uses: actions/upload-artifact@v4
         with:
           name: real-codex-dsh-acceptance
