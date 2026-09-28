@@ -6,7 +6,7 @@ try {
     $testRoot = Join-Path $userDirectory ('dsh-release-acceptance/' + $Run)
     $env:TMPDIR = Join-Path $testRoot 'callbacks'
     Set-Location -LiteralPath (Join-Path $testRoot 'Project space 雪')
-    & npx -y (Join-Path $userDirectory 'dsh-e2e-candidate.tgz')
+    & npx --yes --package (Join-Path $userDirectory ('dsh-e2e-candidate-' + $Run + '.tgz')) -- dsh-subagent-mcp
     exit $LASTEXITCODE
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)

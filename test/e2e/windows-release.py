@@ -28,7 +28,7 @@ def acceptance(host, package, output, run):
     report = {'host': host, 'run': run, 'ok': False, 'phases': []}
     terminal = None
     try:
-        upload(host, package, 'dsh-e2e-candidate.tgz')
+        upload(host, package, f'dsh-e2e-candidate-{run}.tgz')
         upload(host, ROOT/'test/e2e/windows-state.mjs', 'dsh-e2e-state.mjs')
         upload(host, ROOT/'test/e2e/windows-launch.ps1', 'dsh-e2e-launch.ps1')
         paths = json.loads(remote(host, 'node', 'dsh-e2e-state.mjs', 'prepare', run))
