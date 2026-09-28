@@ -1,7 +1,5 @@
 import {mkdtempSync, mkdirSync, rmSync, realpathSync} from 'node:fs';
-import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {execFileSync} from 'node:child_process';
 import {runCommand} from './commands.mjs';
 import {temporaryDirectory} from './platform.mjs';
 

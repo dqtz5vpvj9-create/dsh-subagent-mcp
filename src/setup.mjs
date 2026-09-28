@@ -98,6 +98,7 @@ export async function setup(argv, {source = false} = {}) {
     catch (error) {
       if (args.service && args.service !== 'auto') throw error;
       console.warn('Login startup could not be registered: ' + error.message + '\nUsing a background process that starts when Codex connects.');
+      await removeService(record).catch(() => {});
       record.backend = 'background'; writeJson(installationFile(), record);
     }
     await startService(record);

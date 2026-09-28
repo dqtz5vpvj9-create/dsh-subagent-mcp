@@ -3,6 +3,7 @@ import {dirname,join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {authenticateWeb,WebClient} from './web-client.mjs';
 import {settledStatus} from './manager.mjs';
+import {privateDirectory} from './platform.mjs';
 
 const active=a=>['starting','running','interrupting'].includes(a.status);
 const textOf=message=>(message?.content??[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
@@ -21,7 +22,7 @@ export class ExternalSessions {
       throw new Error('This session ID already belongs to another bridge runtime or Web server');
     const authId=existing?.web_auth_id??randomUUID();
     const path=this.credentialPath(authId);
-    mkdirSync(dirname(path),{recursive:true,mode:0o700});
+    privateDirectory(dirname(path));
     writeFileSync(path,JSON.stringify(credentials),{mode:0o600});
     this.live.get(session_id)?.client.close();this.live.delete(session_id);
     const a={...existing,id:session_id,session_id,external:true,web_origin:credentials.origin,web_auth_id:authId,

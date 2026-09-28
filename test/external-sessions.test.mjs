@@ -74,7 +74,14 @@ test('MCP attaches the exact external ID, retains permissions, and stores only a
   assert.equal(a.preset,undefined);assert.equal(a.permission,undefined);assert.equal(a.model,undefined);
   assert.ok(!JSON.stringify(a).includes('test-cookie'));assert.ok(!JSON.stringify(a).includes('test-secret'));
   const path=f.manager.external.credentialPath(legacy.web_auth_id);
-  assert.equal(statSync(path).mode&0o777,0o600);assert.ok(!readFileSync(path,'utf8').includes('test-secret'));
+  if(process.platform!=='win32')assert.equal(statSync(path).mode&0o777,0o600);
+  else {
+    const {execFileSync}=await import('node:child_process');
+    const acl=execFileSync('icacls.exe',[path],{encoding:'utf8'});
+    assert.doesNotMatch(acl,/BUILTIN\\Users|Everyone|Authenticated Users/);
+    assert.match(acl,/\(F\)/);
+  }
+  assert.ok(!readFileSync(path,'utf8').includes('test-secret'));
   assert.deepEqual(f.calls.map(x=>x.method),['session/list','session/list','session/list']);
   const follow=await f.call('dsh_followup',{agent_id:f.id,task:'A question'});
   assert.ok(['starting','running'].includes(follow.status));

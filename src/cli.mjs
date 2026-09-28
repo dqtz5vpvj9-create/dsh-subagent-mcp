@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {readFileSync, existsSync} from 'node:fs';
+import {readFileSync, existsSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
 import {projectRoot} from './config.mjs';
@@ -43,6 +43,7 @@ Upgrades and ordinary stops refuse to interrupt active tasks.`);
     const service = await import('./service.mjs');
     if (command !== 'start') await service.stopService(options);
     if (command !== 'stop') await service.startService();
+    if (command === 'stop' && installation()) writeFileSync(join(locations().state, 'paused'), '', {mode: 0o600});
     console.log(command === 'stop' ? 'Stopped.' : 'Ready.');
   } else if (command === 'logs') {
     flags({});

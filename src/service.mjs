@@ -60,6 +60,8 @@ export async function statusService() {
 
 export async function startService(record = installation()) {
   if (!record) throw new Error('Not installed. Run dsh-subagent-mcp setup first.');
+  const paused = join(locations().state, 'paused');
+  if (existsSync(paused)) unlinkSync(paused);
   if ((await statusService()).running) return;
   if (record.backend === 'systemd') runCommand(['systemctl'], ['--user', 'start', unit]);
   else if (record.backend === 'launchd') runCommand(['launchctl'], ['kickstart', `gui/${process.getuid()}/${label}`]);

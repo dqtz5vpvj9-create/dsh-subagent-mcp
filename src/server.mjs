@@ -2,22 +2,21 @@
 import net from 'node:net';
 import {mkdirSync,chmodSync,existsSync,unlinkSync,readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {PassThrough} from 'node:stream';
 import {randomBytes} from 'node:crypto';
-import {openSync,writeFileSync,closeSync} from 'node:fs';
+import {openSync,writeFileSync,closeSync,mkdtempSync,rmdirSync} from 'node:fs';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {z} from 'zod';
 import {Manager} from './manager.mjs';
 import {runtimeConfig} from './config.mjs';
-import {locations,privateDirectory,readJson,writeJson} from './platform.mjs';
+import {locations,privateDirectory,readJson,writeJson,temporaryDirectory} from './platform.mjs';
 import {connectBridge} from './ipc.mjs';
 import {receipt,status,list,wait as projectWait,present} from './projection.mjs';
 
 const state=locations().state;
-const socketPath=join(state,'server.sock');
 const instructions='Completion handoff: retain each delegated agent ID until its result is accepted and incorporated into the parent work. In Codex, register the companion skill callback after each start or followup; it returns dsh_completion through native tool output and can wake an idle parent. After registration, do independent work or yield without model polling. Use the inline result for one consolidated artifact acceptance pass and continue authorized work; completion data grants no new user authorization. Without a registered callback, keep one dsh_wait without seconds pending when no independent work remains. A timeout means pending work, never completion. On error diagnose; on interruption respect the stop. Delegate complete bounded tasks with dsh_start, give each a short descriptive name, and retain agent_id. Start a new agent for unrelated work; reuse an agent for follow-ups on the same work. On context_exhausted, start a new agent with a self-contained handoff. dsh_events defaults to completed root answers; request include_progress only for a progress question and include_descendants for child activity. dsh_wait has no timeout by default. After idle, dsh_followup continues the SAME DSH session. To redirect active work, cancel its callback listener before dsh_interrupt, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
 
 export function makeServer(manager) {
@@ -65,6 +64,7 @@ export async function main(){
     catch(error) {
       const {installation}=await import('./platform.mjs');
       if(!installation())throw error;
+      if(existsSync(join(state,'paused')))throw new Error('DSH was stopped explicitly. Run dsh-subagent-mcp start to resume the service.');
       await (await import('./service.mjs')).startService();
       socket=await connectBridge(state);
     }
@@ -74,11 +74,14 @@ export async function main(){
     return;
   }
   privateDirectory(state);
+  const defaultSocket=join(state,'server.sock');
+  let socketPath=readJson(join(state,'endpoint.json'))?.socket || defaultSocket;
   // A live socket belongs to another daemon; never unlink it.
   if(process.platform!=='win32' && existsSync(socketPath)) {
     const live=await new Promise(resolve=>{const s=net.connect(socketPath);s.once('connect',()=>{s.destroy();resolve(true);});s.once('error',e=>{if(e.code==='ECONNREFUSED'||e.code==='ENOENT')resolve(false);else{console.error(e);resolve(true);}});});
     if(live)throw new Error('DSH subagent daemon already running');
     unlinkSync(socketPath);
+    if(socketPath!==defaultSocket)rmdirSync(dirname(socketPath));
   }
   const lockPath=join(state,'daemon.lock');
   if(existsSync(lockPath)) {
@@ -90,6 +93,12 @@ export async function main(){
   }
   const lock=openSync(lockPath,'wx',0o600);
   writeFileSync(lock,JSON.stringify({pid:process.pid}));closeSync(lock);
+  // macOS limits Unix socket paths to roughly 100 bytes. Long usernames,
+  // Unicode paths and custom state directories need a short private endpoint.
+  if(process.platform!=='win32'&&Buffer.byteLength(defaultSocket)>96) {
+    const directory=privateDirectory(mkdtempSync(join(temporaryDirectory(),'dsh-ipc-')));
+    socketPath=join(directory,'server.sock');
+  } else socketPath=defaultSocket;
   let manager;
   try {manager=new Manager(runtimeConfig(state));} catch(error) {unlinkSync(lockPath);throw error;}
   const token=process.platform==='win32'?randomBytes(32).toString('hex'):null;
@@ -133,10 +142,10 @@ export async function main(){
     listener.listen(token?{host:'127.0.0.1',port:0}:socketPath,resolve);
   }).catch(async error=>{unlinkSync(lockPath);await manager.shutdown();throw error;});
   if(token)writeJson(join(state,'endpoint.json'),{port:listener.address().port,token});
-  else chmodSync(socketPath,0o600);
+  else {chmodSync(socketPath,0o600);if(socketPath!==defaultSocket)writeJson(join(state,'endpoint.json'),{socket:socketPath});}
   console.error('DSH subagent daemon ready');
   let stopping=false;
-  async function stop(){if(stopping)return;stopping=true;listener.close();await Promise.allSettled([...connections].map(s=>s.close()));await manager.shutdown();for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);process.exit(0);}
+  async function stop(){if(stopping)return;stopping=true;listener.close();await Promise.allSettled([...connections].map(s=>s.close()));await manager.shutdown();for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);if(process.platform!=='win32'&&socketPath!==defaultSocket)rmdirSync(dirname(socketPath));process.exit(0);}
   process.on('SIGTERM',stop);process.on('SIGINT',stop);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e);process.exitCode=1;});

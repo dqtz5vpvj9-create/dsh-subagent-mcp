@@ -33,10 +33,8 @@ else process.exit(3);
   try {
     const [pack] = JSON.parse(runCommand('npm', ['pack', projectRoot, '--pack-destination', root, '--json', '--ignore-scripts'], {stdio: 'pipe', encoding: 'utf8'}));
     const cache = join(folder, 'npx cache'); mkdirSync(cache);
-    execFileSync('tar', ['-xzf', join(root, pack.filename), '-C', cache]);
-    const entry = join(cache, 'package/src/cli.mjs');
-    // Extracted npm tarballs normally receive dependencies from npx. Install them here.
-    runCommand('npm', ['install', '--prefix', join(cache, 'package'), '--ignore-scripts', '--no-audit', '--no-fund'], {stdio: 'pipe'});
+    runCommand('npm', ['install', '--prefix', cache, '--ignore-scripts', '--no-audit', '--no-fund', join(root, pack.filename)], {stdio: 'pipe'});
+    const entry = join(cache, 'node_modules/dsh-subagent-mcp/src/cli.mjs');
     const output = run(entry, 'setup', '--service', service, '--capture-key', '--no-install-deps');
     assert.match(output, /Installation complete/); assert.ok(!output.includes('fixture-private-key'));
     const record = JSON.parse(readFileSync(join(config, 'installation.json'), 'utf8'));
@@ -63,6 +61,10 @@ else process.exit(3);
     assert.equal(readFileSync(join(state, 'retained-evidence.txt'), 'utf8'), 'keep');
     assert.ok(existsSync(join(config, 'provider.json')));
     assert.ok(!existsSync(join(state, 'daemon.lock')));
+  } catch(error) {
+    const log=join(state,'daemon.log');
+    if(existsSync(log))console.error('Service diagnostic:',readFileSync(log,'utf8'));
+    throw error;
   } finally {
     if (installed && existsSync(installed)) {try {run(installed, 'stop', '--force');} catch {}}
     rmSync(root, {recursive: true, force: true});

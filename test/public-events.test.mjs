@@ -161,12 +161,13 @@ test('completed replies survive pagination, later turns, and manager restart', a
   m.event('fixture', 'assistant/message', {text: 'new unfinished turn'});
   await m.shutdown();
   const reopened = new Manager(m.config);
-  t.after(() => reopened.shutdown());
-  const parts = readAll(reopened, {}, 256);
-  const joined = new Map();
-  for (const part of parts) {
-    assert.equal(part.type, 'assistant/final');
-    joined.set(part.event_id, (joined.get(part.event_id) ?? '') + part.text);
-  }
-  assert.deepEqual([...joined.values()], messages);
+  try {
+    const parts = readAll(reopened, {}, 256);
+    const joined = new Map();
+    for (const part of parts) {
+      assert.equal(part.type, 'assistant/final');
+      joined.set(part.event_id, (joined.get(part.event_id) ?? '') + part.text);
+    }
+    assert.deepEqual([...joined.values()], messages);
+  } finally {await reopened.shutdown();}
 });

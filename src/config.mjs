@@ -1,7 +1,6 @@
 import {existsSync,realpathSync,mkdirSync,writeFileSync} from 'node:fs';
-import {delimiter,join,dirname} from 'node:path';
+import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {homedir} from 'node:os';
 import {locations, installation} from './platform.mjs';
 import {commandSpec} from './commands.mjs';
 

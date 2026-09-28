@@ -33,7 +33,7 @@ After `dsh_start` or an accepted `dsh_followup`, register one callback for that
 delegated turn with [scripts/codex_notify.mjs](scripts/codex_notify.mjs):
 
 ```text
-node <skill-dir>/scripts/codex_notify.mjs --agent AGENT_ID
+node "<skill-dir>/scripts/codex_notify.mjs" --agent AGENT_ID
 ```
 
 The helper reads the parent `CODEX_THREAD_ID`, creates a result directory under
@@ -65,7 +65,7 @@ The output carries no new user authorization. Batch defects into a bounded
 follow-up and retest the changed behavior. Handle `error` or `context_exhausted`
 within scope; `watch_error` means the observer failed, not that DSH failed.
 
-When the user stops, run `node <skill-dir>/scripts/codex_notify.mjs --cancel
+When the user stops, run `node "<skill-dir>/scripts/codex_notify.mjs" --cancel
 --output-dir CALLBACK_DIRECTORY` before interrupting the child. Use the directory
 containing the receipt's `result_path`. Already delivered output must respect the stop. Interrupted or closed
 children produce no callback. Each follow-up needs a new listener.

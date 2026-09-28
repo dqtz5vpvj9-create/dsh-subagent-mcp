@@ -3,16 +3,16 @@ import {join} from 'node:path';
 import {readJson, locations} from './platform.mjs';
 
 export async function connectBridge(state = locations().state) {
-  const endpoint = process.platform === 'win32' ? readJson(join(state, 'endpoint.json')) : null;
+  const endpoint = readJson(join(state, 'endpoint.json'));
   if (process.platform === 'win32' && !endpoint) throw new Error('DSH service is not running. Run dsh-subagent-mcp start.');
-  const socket = net.connect(endpoint ? {host: '127.0.0.1', port: endpoint.port} : join(state, 'server.sock'));
+  const socket = net.connect(endpoint?.port ? {host: '127.0.0.1', port: endpoint.port} : endpoint?.socket || join(state, 'server.sock'));
   await new Promise((resolve, reject) => {
     socket.once('connect', resolve);
     socket.once('error', reject);
     socket.setTimeout(5000, () => socket.destroy(new Error('DSH service connection timed out')));
   });
   socket.setTimeout(0);
-  if (endpoint) socket.write(JSON.stringify({authenticate: endpoint.token}) + '\n');
+  if (endpoint?.token) socket.write(JSON.stringify({authenticate: endpoint.token}) + '\n');
   return socket;
 }
 
