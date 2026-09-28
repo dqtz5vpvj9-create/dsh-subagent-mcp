@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 — 2026-09-28
+
+- Give the README a distinct visual identity with the Codex terminal emblem and a whale-girl coding crew based on the supplied character reference.
+- Simplify the English and Chinese quick starts: lead with the install command and natural task examples; keep environment and credential details in the installation guide. Runtime behavior is unchanged.
+
 ## 0.5.1 — 2026-09-28
 
 - Redesign the English and Chinese README introductions with an illustrated hero, three focused product benefits, fewer badges, and an earlier installation entry point.

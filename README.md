@@ -1,20 +1,20 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/readme-hero.png" alt="DSH Subagent MCP — One brief. Parallel progress. Codex delegates independent work to DeepSeek agents and receives completion callbacks." width="1200">
+  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/readme-hero.png" alt="DSH Subagent MCP — Give Codex a DeepSeek crew. Blue-haired whale-girl agents write code, investigate, and test beside the Codex terminal emblem." width="1200">
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/dsh-subagent-mcp"><img src="https://img.shields.io/npm/v/dsh-subagent-mcp?style=flat-square&amp;color=CB3837" alt="npm version"></a>
-  <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-167D72?style=flat-square" alt="Codex skill included"></a>
+  <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-4D6BFE?style=flat-square" alt="Codex skill included"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-A6ADBB?style=flat-square" alt="MIT license"></a>
 </p>
 
 <p align="center">English · <a href="README.zh-CN.md">中文</a> · <a href="#get-started">Quick start</a> · <a href="docs/usage.md">Usage guide</a></p>
 
-Let Codex plan and review while DeepSeek agents implement, investigate, and test in parallel. Each result returns automatically, so Codex can resume when there is work to review.
+Give Codex a team of DeepSeek agents. Let them implement, investigate, and test in parallel while Codex plans and reviews. Results return automatically, and each agent keeps its context for the next task.
 
 <table>
 <tr>
-<td width="33%"><strong>Work in parallel</strong><br>Give each agent a complete task and its own file ownership.</td>
+<td width="33%"><strong>Work in parallel</strong><br>Move independent tasks forward at the same time.</td>
 <td width="33%"><strong>Return automatically</strong><br>Finished work wakes Codex with the answer and evidence.</td>
 <td width="33%"><strong>Keep the context</strong><br>Continue the same agent for fixes, questions, and verification.</td>
 </tr>
@@ -22,20 +22,17 @@ Let Codex plan and review while DeepSeek agents implement, investigate, and test
 
 ## Get started
 
-You need **Linux with systemd, Node.js 24+, Python 3, Codex CLI, and a configured DSH installation**. Native callbacks need a Codex App Server supporting `turn/start.toolOutput`; the [live validation](docs/codex-callback-validation.md) used CLI 0.157.1 and App Server 0.157.0.
-
 ```sh
 npx -y dsh-subagent-mcp@latest setup --skill
 ```
 
-Setup installs a persistent local service, registers the MCP server, and links the skill. Its runtime stays outside the disposable npx cache. If your DeepSeek key exists only in the current shell, add `--capture-key`. See [setup and upgrades](docs/setup.md).
+Setup connects DSH to Codex and installs the skill. See the [installation guide](docs/setup.md) for environment requirements, credentials, and upgrades.
 
 Open a new Codex session and ask:
 
 ```text
 Use $dsh-subagent to implement the agreed plan in parallel.
-Give each agent a complete deliverable, separate file ownership, and relevant tests.
-Register completion callbacks, then review and integrate each result when it arrives.
+Have the agents run the relevant tests, then review and integrate their results.
 ```
 
 For a smaller first task:

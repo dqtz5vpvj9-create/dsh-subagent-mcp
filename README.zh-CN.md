@@ -1,20 +1,20 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/readme-hero.png" alt="DSH Subagent MCP：Codex 统筹，DeepSeek 并行工作，完成结果自动回传。" width="1200">
+  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/readme-hero.png" alt="DSH Subagent MCP：给 Codex 配一支 DeepSeek 团队。蓝发鲸鱼娘在 Codex 终端图标旁协作完成代码实现、排查与测试。" width="1200">
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/dsh-subagent-mcp"><img src="https://img.shields.io/npm/v/dsh-subagent-mcp?style=flat-square&amp;color=CB3837" alt="npm version"></a>
-  <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-167D72?style=flat-square" alt="Codex skill included"></a>
+  <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-4D6BFE?style=flat-square" alt="Codex skill included"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-A6ADBB?style=flat-square" alt="MIT license"></a>
 </p>
 
 <p align="center">中文 · <a href="README.md">English</a> · <a href="#开始使用">开始使用</a> · <a href="docs/usage.md">使用指南</a></p>
 
-让 Codex 负责规划和验收，DeepSeek 子代理并行完成实现、排查与测试。每个任务完成后自动回传，唤醒 Codex 继续处理。
+给 Codex 配一支 DeepSeek 团队。让子代理并行完成实现、排查与测试，Codex 负责规划和验收。结果自动回传，后续任务也能交给保留着上下文的同一个代理。
 
 <table>
 <tr>
-<td width="33%"><strong>并行推进</strong><br>每个代理领取完整任务，在自己的范围内独立执行。</td>
+<td width="33%"><strong>并行推进</strong><br>把独立任务分给多个代理，同时推进。</td>
 <td width="33%"><strong>自动回传</strong><br>完成后带着答复和证据唤醒 Codex，无需轮询。</td>
 <td width="33%"><strong>持续协作</strong><br>保留上下文，让同一个代理继续修复和验证。</td>
 </tr>
@@ -22,20 +22,17 @@
 
 ## 开始使用
 
-需要 **Linux + systemd、Node.js 24+、Python 3、Codex CLI，以及已配置模型凭据的 DSH**。原生回调需要 Codex App Server 支持 `turn/start.toolOutput`；[实测环境](docs/codex-callback-validation.md)为 CLI 0.157.1、App Server 0.157.0。
-
 ```sh
 npx -y dsh-subagent-mcp@latest setup --skill
 ```
 
-安装器会部署持久运行的本地服务、注册 MCP 并链接 skill，运行文件不依赖 npx 临时缓存。如果 DeepSeek key 只在当前 shell 中，再加上 `--capture-key`。详见[安装与升级](docs/setup.md)。
+安装器会将 DSH 接入 Codex，并安装配套 skill。环境要求、凭据配置和升级方法见[安装指南](docs/setup.md)。
 
 新开 Codex 会话，直接安排：
 
 ```text
 用 $dsh-subagent 并发实现已经确认的方案。
-每个代理领取完整任务，明确文件归属，并完成相关测试。
-注册完成回调，结果送达后逐个验收和集成。
+让代理完成相关测试，再验收并集成结果。
 ```
 
 也可以先试一个小任务：
