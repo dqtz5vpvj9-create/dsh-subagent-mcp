@@ -37,3 +37,13 @@ export function writeJson(path, value) {
 export const installationFile = () => join(locations().config, 'installation.json');
 export const installation = () => readJson(installationFile());
 export const temporaryDirectory = () => process.env.TMPDIR || (existsSync('/mnt/cache/data-cache') ? '/mnt/cache/data-cache' : tmpdir());
+
+export function providerEnvironment(config = locations().config) {
+  const provider = readJson(join(config, 'provider.json'), {});
+  const legacy = join(config, 'environment');
+  if (existsSync(legacy)) for (const line of readFileSync(legacy, 'utf8').split('\n')) {
+    const match = /^(DEEPSEEK_API_KEY|DEEPSEEK_BASE_URL)="(.*)"$/.exec(line);
+    if (match && !provider[match[1]] && !process.env[match[1]]) provider[match[1]] = match[2].replace(/\\([\\"])/g, '$1');
+  }
+  return provider;
+}

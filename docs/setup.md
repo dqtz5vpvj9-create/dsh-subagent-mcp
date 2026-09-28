@@ -83,6 +83,16 @@ The listener checks the exact parent before registering. If the client lacks
 that capability, use a single pending `dsh_wait`; it is not an automatic wakeup.
 See [completion delivery](usage.md) for the protocol and remote-parent options.
 
+To open DSH's Web interface with the same runtime, sessions and captured provider
+settings:
+
+```sh
+npx -y dsh-subagent-mcp dsh web
+```
+
+Open the local URL printed by DSH. Other DSH arguments can be passed after `dsh`;
+you do not need a separate global installation.
+
 ## Check and manage the installation
 
 ```sh

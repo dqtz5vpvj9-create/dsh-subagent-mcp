@@ -28,6 +28,7 @@ test('fresh setup installs real dependencies, registers Codex, and runs real DSH
     installed = join(record.root, 'src/cli.mjs');
     assert.ok(existsSync(record.dsh));
     assert.equal(JSON.parse(run(process.execPath, [installed, 'doctor', '--json'])).ok, true);
+    assert.match(run(process.execPath, [installed, 'dsh', '--version']), /0\.1\./);
     const [codex, ...prefix] = record.codex;
     const registration = JSON.parse(run(codex, [...prefix, 'mcp', 'get', 'dsh_subagent', '--json']));
     assert.ok(registration.transport.args.includes(installed));

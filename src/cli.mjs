@@ -2,8 +2,8 @@
 import {readFileSync, existsSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
-import {projectRoot} from './config.mjs';
-import {locations, installation} from './platform.mjs';
+import {projectRoot, resolveDshCli} from './config.mjs';
+import {locations, installation, providerEnvironment} from './platform.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const version = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')).version;
@@ -21,6 +21,7 @@ Usage:
   dsh-subagent-mcp upgrade
   dsh-subagent-mcp uninstall [--purge]
   dsh-subagent-mcp codex [Codex arguments]
+  dsh-subagent-mcp dsh [DSH arguments]
   dsh-subagent-mcp notify --agent AGENT_ID
   dsh-subagent-mcp adopt
 
@@ -57,6 +58,10 @@ Upgrades and ordinary stops refuse to interrupt active tasks.`);
   } else if (command === 'uninstall') await (await import('./setup.mjs')).uninstall(flags({purge: {type: 'boolean'}}));
   else if (command === 'notify') await (await import('./notify.mjs')).notify(args);
   else if (command === 'codex') await (await import('./codex-launch.mjs')).launchCodex(args);
+  else if (command === 'dsh') {
+    const env = {...process.env, ...installation()?.env, ...providerEnvironment()};
+    (await import('./commands.mjs')).runCommand([process.execPath, resolveDshCli()], args, {env});
+  }
   else if (command === 'adopt') {
     flags({});
     if (process.platform !== 'linux') throw new Error('Legacy session adoption requires Linux flock. Normal DSH sessions work on all supported platforms.');

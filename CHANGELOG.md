@@ -8,6 +8,7 @@ Install and run DSH subagents on Windows, Linux and macOS with the same commands
 - Use native per-user startup: Scheduled Tasks on Windows, launchd on macOS and systemd on Linux. A background-process fallback supports environments without login services. Windows IPC uses authenticated loopback connections and private ACLs; long macOS paths use a short private Unix socket.
 - Add `doctor`, `status`, `start`, `stop`, `restart`, `logs`, `upgrade` and `uninstall`. Installs survive npx cache cleanup. Activation failures restore the previous installation, active tasks block ordinary stops and upgrades, and uninstall retains task history and provider settings by default.
 - Add `dsh-subagent-mcp codex`, an authenticated local App Server launcher for automatic callbacks across all three systems. The Node.js listener preserves the existing completion, cancellation and evidence semantics; the old Python helper remains available for compatibility.
+- Open DSH Web with `dsh-subagent-mcp dsh web`, using the managed runtime and saved provider settings without a global installation.
 - Test packed installation, native service lifecycle, rollback, Unicode paths, callback delivery and real DSH presets on Windows, Linux and macOS in CI. Fresh-install coverage uses the actual Codex CLI and managed DSH dependency.
 
 **Upgrade:** finish active tasks, then run `npx -y dsh-subagent-mcp@latest setup`.
