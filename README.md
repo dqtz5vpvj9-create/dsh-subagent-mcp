@@ -44,13 +44,51 @@ Keep it read-only and return the root cause with code references.
 
 You can later ask “What has it found?”, continue with “Have that same agent fix it and run the tests”, or stop it when the plan changes.
 
-## Spend model calls on work
+## Why combine Codex and DSH?
 
-The bundled skill registers one host-side listener after each start or follow-up. The listener waits for DSH, saves the full result, and returns the answer as a native `dsh_completion` tool result. Codex can do independent work or end its turn until the callback arrives.
+Software work combines decisions that need broad project context with execution that can be assigned a clear scope: implementing a module, tracing a defect, or running and repairing tests. DSH Subagent MCP separates these responsibilities. GPT-6 in Codex handles task decomposition, cross-task decisions, and acceptance; DeepSeek handles bounded deliverables through its own runtime. This keeps the parent's model budget focused on coordination and review.
 
-In one live test, an idle parent made **zero model requests and used zero input/output tokens over 55.834 seconds**, then resumed automatically from the DSH result. Dispatch and review still use Codex tokens; DSH has its own provider usage. This measures idle waiting, not an overall cost-saving percentage. See the [test and evidence boundary](docs/codex-callback-validation.md).
+Two requirements shape the design: preserve DeepSeek's execution environment, and integrate delegation into Codex without repeated parent-model activity while children run.
 
-Errors and context exhaustion also return to the parent. A tool failure that the child is still fixing does not end its task. Explicitly interrupted or closed agents do not trigger a continuation callback.
+### Preserve the full DSH execution environment
+
+Tool access, context management, and the execution loop all affect how an agent completes a task. The bridge starts a real DeepSeek Harness agent with its own conversation, working directory, tools, and permissions. The standard DSH preset provides context compaction and tool-result pruning, while persisted sessions allow the same agent to continue related work.
+
+Codex supplies a self-contained brief with the objective, allowed changes, constraints, and acceptance evidence. The child then owns implementation, relevant tests, and in-scope repairs. The parent does not have to relay each tool call or supervise every intermediate step.
+
+### Deliver completion to the parent scheduler
+
+Codex starts and follows up with agents through MCP. After each accepted task, the bundled skill registers a detached host-side listener. That listener makes one unbounded wait, saves the full result, and sends the answer back through the Codex App Server's native tool-output channel.
+
+This separates the lifetime of the DSH task from the current parent turn. Codex can work on another task or end its turn when nothing else is ready. Each child can complete independently. Its `dsh_completion` result enters an active parent turn or starts the next turn for an idle parent; the parent then reviews the artifacts and continues the authorized work.
+
+Errors and context exhaustion also return to the parent. A tool error that the child is still repairing does not prematurely complete its task. Explicitly interrupted or closed agents do not trigger a continuation callback.
+
+### Reduce orchestration overhead as well as execution work
+
+Delegation introduces its own costs: preparing briefs, inspecting status, transferring context, and reviewing results. Short model-driven status checks repeatedly bring the parent conversation into another model turn. A single pending tool wait avoids that repetition; the detached callback additionally lets the parent end its turn and resume when the result arrives.
+
+The bundled skill combines completion callbacks with three practices:
+
+- Assign complete deliverables with clear file ownership, so independent agents can make progress without continual parent instructions.
+- Request a concise final answer and artifact evidence, then perform one consolidated acceptance pass. Keep detailed execution logs available for targeted inspection.
+- Start major phases with a concise parent-session handoff instead of carrying the entire project history into every phase. Continue the same DSH agent for related fixes and questions.
+
+These practices reduce parent execution and polling turns, unnecessary transcript transfer, and repeated review. The callback removes model-driven waiting; brief quality, parent-context size, and acceptance work still determine the rest of the overhead.
+
+### What the live test established
+
+The callback test used a real DSH task containing a 75-second shell delay. Parent telemetry measured a 55.834-second idle interval within that run.
+
+| Observation | Result |
+| :--- | :--- |
+| New parent-model requests during the measured idle interval | **0** |
+| Parent input / output tokens during that interval | **0 / 0** |
+| Completion while the parent was active | Tool output entered the existing turn |
+| Completion while the parent was idle | The parent resumed automatically |
+| Extra user messages needed for delivery | **0** |
+
+This validates native completion delivery and zero model usage during the measured wait. Planning, dispatch, resumed reasoning, and acceptance still consume Codex tokens; DSH has its own provider usage. An overall savings percentage requires comparable complete-task measurements. The [validation record](docs/codex-callback-validation.md) describes the test and evidence scope.
 
 ## See the work, keep the conversation
 

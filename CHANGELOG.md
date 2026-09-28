@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.4 — 2026-09-28
+
+- Expand both READMEs with the design rationale for combining Codex and DSH, native completion scheduling, delegation overhead, and the measured callback results. Runtime behavior is unchanged.
+
 ## 0.5.3 — 2026-09-28
 
 - Refine the README artwork: a floating blue Codex emblem exchanges tasks and results with the whale-girl agents, without a slab or pedestal. Runtime behavior is unchanged.
