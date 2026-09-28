@@ -22,13 +22,16 @@ DSH Subagent MCP 让 Codex 直接调用 DeepSeek 子代理。Codex 负责规划�
 
 ## 开始使用
 
+安装 [Node.js 24+](https://nodejs.org/) 后，在终端执行：
+
 ```sh
 npx -y dsh-subagent-mcp@latest setup
+npx -y dsh-subagent-mcp codex
 ```
 
-Windows、Linux 和 macOS 使用同一个安装命令。安装器会复用已有的 DSH 和 Codex，按需安装缺少的依赖，并装好配套 skill。Windows 回调、账号配置和升级方法见[安装指南](docs/setup.md)。
+Windows、Linux 和 macOS 使用同样的命令。安装器会补齐依赖、配置后台服务并装好 skill；启动器会打开支持自动回调的 Codex。已有账号和配置可以继续使用，首次使用请先完成[账号配置](docs/setup.md#connect-your-account)。
 
-新开 Codex 会话后，可以这样安排任务：
+进入 Codex 后，可以这样安排任务：
 
 ```text
 用 $dsh-subagent 并发实现已经确认的方案。

@@ -13,7 +13,7 @@ test('fresh setup installs real dependencies, registers Codex, and runs real DSH
   const env = {...process.env, DSH_SUBAGENT_DATA: join(root, 'data'), DSH_SUBAGENT_CONFIG: join(root, 'config'),
     DSH_SUBAGENT_STATE: join(root, 'state'), DSH_HOME: join(root, 'dsh-home'), CODEX_HOME: join(root, 'codex-home'),
     DEEPSEEK_API_KEY: 'unused-runtime-fixture-key'};
-  for (const key of ['DSH_CLI', 'DSH_CODEX_CLI', 'CODEX_THREAD_ID', 'DSH_CODEX_REMOTE', 'DSH_CODEX_TOKEN', 'DSH_CODEX_CONNECTION']) delete env[key];
+  for (const key of ['DSH_CLI', 'DSH_CODEX_CLI', 'CODEX_THREAD_ID', 'DSH_CODEX_REMOTE', 'DSH_CODEX_TOKEN', 'DSH_CODEX_CONNECTION', 'NODE_TEST_CONTEXT']) delete env[key];
   const run = (file, args, overrides = {}) => {
     const result = spawnSync(file, args, {env: {...env, ...overrides}, encoding: 'utf8', timeout: 360000});
     assert.equal(result.error, undefined);
@@ -35,7 +35,9 @@ test('fresh setup installs real dependencies, registers Codex, and runs real DSH
     run(codex, [...prefix, 'app-server', 'generate-json-schema', '--experimental', '--out', schemas]);
     const protocol = JSON.parse(readFileSync(join(schemas, 'v2/TurnStartParams.json'), 'utf8'));
     assert.ok(protocol.properties.toolOutput, 'Installed Codex must support native completion callbacks');
-    console.log(run(process.execPath, ['--test', fileURLToPath(new URL('./runtime.test.mjs', import.meta.url))], {DSH_RUNTIME_TEST: '1', DSH_CLI: record.dsh}));
+    const runtime = run(process.execPath, ['--test', '--test-reporter=tap', fileURLToPath(new URL('./runtime.test.mjs', import.meta.url))], {DSH_RUNTIME_TEST: '1', DSH_CLI: record.dsh});
+    assert.match(runtime, /# pass 2/);
+    console.log(runtime);
     console.log('Fresh installation verified on', process.platform, 'with', run(codex, [...prefix, '--version']).trim());
     run(process.execPath, [installed, 'uninstall']);
     assert.ok(!existsSync(join(env.DSH_SUBAGENT_CONFIG, 'installation.json')));

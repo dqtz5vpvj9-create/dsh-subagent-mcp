@@ -12,8 +12,9 @@ private user directory. It prepares the DSH profile, starts the background
 service, connects Codex's MCP tools, and installs the companion skill. Python,
 root access and a global npm installation are not required.
 
-The managed DSH dependency is pinned to the version validated by this release.
-Setup preserves an existing DSH installation and its provider configuration.
+Missing dependencies are installed at the versions validated by this release:
+DSH `0.1.5-rc.1` and Codex CLI `0.158.0`. Setup preserves existing installations
+and their provider configuration.
 
 ## Connect your account
 
@@ -30,6 +31,26 @@ configuration or command output. Repeating `--capture-key` updates the supplied
 values while preserving other provider settings. Existing Linux `environment`
 files remain readable during migration.
 
+For a new DSH account, use the API key from your DeepSeek provider. On Windows
+(PowerShell):
+
+```powershell
+$env:DEEPSEEK_API_KEY = 'your-api-key'
+npx -y dsh-subagent-mcp@latest setup --capture-key
+Remove-Item Env:DEEPSEEK_API_KEY
+```
+
+On Linux or macOS:
+
+```sh
+read -r -s DEEPSEEK_API_KEY
+export DEEPSEEK_API_KEY
+npx -y dsh-subagent-mcp@latest setup --capture-key
+unset DEEPSEEK_API_KEY
+```
+
+Paste the key when `read` waits for input and press Enter. The input is hidden.
+
 If Codex is newly installed, sign in with:
 
 ```sh
@@ -38,25 +59,24 @@ npx -y dsh-subagent-mcp codex login
 
 ## Start working
 
-Open a new Codex session and ask:
+Start Codex through the supplied launcher:
+
+```sh
+npx -y dsh-subagent-mcp codex
+```
+
+Then ask:
 
 ```text
 Use $dsh-subagent to investigate this repository in read-only mode.
 Find where request cancellation reaches the worker process.
 ```
 
-On **Windows**, start Codex through the supplied launcher for automatic completion
-callbacks:
-
-```sh
-npx -y dsh-subagent-mcp codex
-```
-
 The launcher connects Codex to its own local App Server with authentication and
 passes the callback connection to the parent session. It uses your existing Codex
 configuration and login. Arguments such as `--cd` and `--model` are forwarded.
 Linux and macOS can use ordinary Codex sessions with their local control socket,
-or use the same launcher.
+or use the same launcher. Windows uses the launcher for automatic callbacks.
 
 Automatic callbacks require a Codex App Server with `turn/start.toolOutput`.
 The listener checks the exact parent before registering. If the client lacks

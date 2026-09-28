@@ -8,7 +8,7 @@ import {projectRoot, resolveDshCli} from './config.mjs';
 import {locations, installation, installationFile, privateDirectory, writeJson, readJson} from './platform.mjs';
 import {commandSpec, packageEntry, runCommand} from './commands.mjs';
 import {installPackage} from './install-package.mjs';
-import {backendDefault, installService, startService, stopService, statusService, removeService} from './service.mjs';
+import {backendDefault, installService, startService, stopService, statusService, removeService, systemdQuote} from './service.mjs';
 import {bridgeClient} from './bridge-client.mjs';
 
 export const TESTED_DSH = '0.1.5-rc.1';
@@ -68,7 +68,9 @@ export async function setup(argv, {source = false} = {}) {
   if (status.running && status.active.length) throw new Error('Active DSH tasks are running. Finish or interrupt them before setup or upgrade.');
   const paths = locations();
   const legacyUnitPath = join(homedir(), '.config/systemd/user/dsh-subagent-mcp.service');
-  const legacyUnit = !previous && process.platform === 'linux' && existsSync(legacyUnitPath) ? readFileSync(legacyUnitPath) : null;
+  const candidateUnit = !previous && process.platform === 'linux' && existsSync(legacyUnitPath) ? readFileSync(legacyUnitPath) : null;
+  const legacyUnit = candidateUnit && (candidateUnit.includes(systemdQuote('DSH_SUBAGENT_STATE=' + paths.state)) ||
+    (!candidateUnit.includes('DSH_SUBAGENT_STATE=') && paths.state === join(homedir(), '.local/state/dsh-subagent-mcp'))) ? candidateUnit : null;
   const legacyRunning = !previous && process.platform === 'linux' && existsSync(join(paths.state, 'server.sock'));
   const legacyEnabled = legacyUnit && spawnSync('systemctl', ['--user', 'is-enabled', 'dsh-subagent-mcp.service'], {stdio: 'ignore'}).status === 0;
   if (legacyRunning) {
@@ -84,6 +86,7 @@ export async function setup(argv, {source = false} = {}) {
     } finally {client?.close();}
   }
   privateDirectory(paths.config); privateDirectory(paths.state); privateDirectory(paths.data);
+  mkdirSync(paths.codex, {recursive: true, mode: 0o700});
   console.log(`DSH Subagent MCP ${version()} · ${process.platform}\nPreparing installation…`);
   const dependencies = ensureDependencies(!args['no-install-deps']);
   const oldRegistration = codexRegistration(dependencies.codex);
