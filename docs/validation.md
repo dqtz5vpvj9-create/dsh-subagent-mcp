@@ -1,5 +1,40 @@
 # Validation
 
+## 0.6.0 cross-platform installation — 2026-09-28
+
+The [native CI matrix](https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/actions/runs/36398283382)
+passed on all three operating systems with Node.js 24. Each platform ran
+71 unit and integration tests, a fresh-install test, and two real DSH runtime
+tests. Linux and macOS also ran the 12 legacy Python compatibility tests.
+
+| Platform | Verified service backends | Fresh dependency installation |
+| :--- | :--- | :--- |
+| Windows | Scheduled Task and background process | Codex CLI 0.158.0 and DSH 0.1.5-rc.1 |
+| macOS | launchd and background process | Codex CLI 0.158.0 and DSH 0.1.5-rc.1 |
+| Linux | systemd user service and background process | Codex CLI 0.158.0 and DSH 0.1.5-rc.1 |
+
+Packed-package tests cover paths containing spaces, Unicode and `&`, real native
+service registration, MCP discovery, restart after deleting the npx cache,
+rollback after a failed Codex registration, and uninstall that retains history
+and provider settings. Windows additionally checks private credential ACLs and
+rejection of unauthenticated bridge connections.
+
+Fresh-install tests download missing dependencies, use the actual Codex CLI to
+register and read back the MCP entry, check its native callback protocol schema,
+and initialize both real DSH presets with persistence and resume. Provider calls
+are not part of these installation tests.
+
+The Node.js listener tests cover independent completions, cancellation, task
+errors, context exhaustion, loss of delivery acknowledgement, and full saved
+results. Launcher tests cover authenticated connections, argument forwarding,
+exit status and credential cleanup. A separate local check used the actual
+Codex App Server to accept an authenticated connection and reject an
+unauthenticated one.
+
+The native matrix verifies installation and protocol behavior. Model-driven
+parent wakeup was previously exercised on Linux as recorded below; this release
+does not claim a separate live-model wakeup measurement on Windows or macOS.
+
 ## 0.5.0 release checks — 2026-09-28
 
 `TMPDIR=/mnt/cache/data-cache DSH_RUNTIME_TEST=1 DSH_PACKAGE_TEST=1 npm test`
@@ -15,8 +50,8 @@ original package cache. It does not restart the production service.
 The current callback path was exercised with both active and idle parent turns.
 An idle parent waited without spending GPT quota and resumed automatically when
 the result arrived. See [the callback validation record](codex-callback-validation.md)
-for versions, method, and scope. `npm test` includes the WebSocket adapter
-and detached Python listener tests.
+for versions, method, and scope. `npm test` now includes the WebSocket adapter
+and detached Node.js listener tests, with legacy Python checks on POSIX systems.
 
 ## Initial bridge validation — 2026-09-12
 
