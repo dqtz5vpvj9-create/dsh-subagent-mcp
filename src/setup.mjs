@@ -69,7 +69,7 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   const paths = locations();
   const legacyUnitPath = join(homedir(), '.config/systemd/user/dsh-subagent-mcp.service');
   const candidateUnit = !previous && process.platform === 'linux' && existsSync(legacyUnitPath) ? readFileSync(legacyUnitPath) : null;
-  const legacyUnit = candidateUnit && (candidateUnit.includes(systemdQuote('DSH_SUBAGENT_STATE=' + paths.state)) ||
+  const legacyUnit = candidateUnit && candidateUnit.includes('/server.mjs') && !candidateUnit.includes('--config') && (candidateUnit.includes(systemdQuote('DSH_SUBAGENT_STATE=' + paths.state)) ||
     (!candidateUnit.includes('DSH_SUBAGENT_STATE=') && paths.state === join(homedir(), '.local/state/dsh-subagent-mcp'))) ? candidateUnit : null;
   const legacyRunning = !previous && process.platform === 'linux' && existsSync(join(paths.state, 'server.sock'));
   const legacyEnabled = legacyUnit && spawnSync('systemctl', ['--user', 'is-enabled', 'dsh-subagent-mcp.service'], {stdio: 'ignore'}).status === 0;

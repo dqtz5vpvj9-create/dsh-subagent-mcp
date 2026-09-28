@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, writeFileSync, mkdirSync, readFileSync, realpathSync, rmSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {projectRoot} from '../src/config.mjs';
 import {runCommand} from '../src/commands.mjs';
@@ -43,7 +44,7 @@ else process.exit(3);
     DSH_HOME: join(folder, 'dsh-home'), CODEX_HOME: join(folder, 'codex-home'), DSH_CLI: dsh, DSH_CODEX_CLI: codex, DEEPSEEK_API_KEY: 'fixture-private-key'};
   for (const key of ['CODEX_THREAD_ID', 'DSH_CODEX_REMOTE', 'DSH_CODEX_TOKEN', 'DSH_CODEX_CONNECTION']) delete env[key];
   const run = (entry, ...args) => execFileSync(process.execPath, [entry, ...args], {env, encoding: 'utf8', stdio: 'pipe', timeout: 120000});
-  const open = entry => execFileSync(process.execPath, ['--import', terminal, entry], {env, encoding: 'utf8', stdio: 'pipe', timeout: 120000});
+  const open = entry => execFileSync(process.execPath, ['--import', pathToFileURL(terminal).href, entry], {env, encoding: 'utf8', stdio: 'pipe', timeout: 120000});
   let installed;
   try {
     const [pack] = JSON.parse(runCommand('npm', ['pack', projectRoot, '--pack-destination', root, '--json', '--ignore-scripts'], {stdio: 'pipe', encoding: 'utf8'}));

@@ -47,16 +47,17 @@ export function serviceBelongsTo(text, backend, config = installationFile()) {
 // Login services have one name per OS user. An isolated configuration must not
 // replace or remove the service registered by another installation.
 export function nativeServiceConflict(record, {home = homedir(), config = installationFile()} = {}) {
-  const definition = serviceDefinition(record, {home, config});
-  if (!definition) return false;
+  if (record.backend === 'background') return false;
   let text;
   if (record.backend === 'task-scheduler') {
     const result = spawnSync('schtasks.exe', ['/Query', '/TN', label, '/XML'], {windowsHide: true});
     if (result.status !== 0) return false;
     text = result.stdout.toString(result.stdout[1] === 0 || result.stdout[0] === 255 ? 'utf16le' : 'utf8');
   } else {
-    if (!existsSync(definition.path)) return false;
-    text = readFileSync(definition.path, 'utf8');
+    const path = record.backend === 'systemd' ? join(home, '.config/systemd/user', unit)
+      : join(home, 'Library/LaunchAgents', label + '.plist');
+    if (!existsSync(path)) return false;
+    text = readFileSync(path, 'utf8');
   }
   return !serviceBelongsTo(text, record.backend, config);
 }

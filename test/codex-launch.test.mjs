@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {temporaryDirectory} from '../src/platform.mjs';
 
 for (const scenario of ['client exit', 'terminal default', 'server exit', 'missing executable'])
@@ -40,7 +40,7 @@ if(args[0]==='app-server') {
   writeFileSync(terminal, "Object.defineProperty(process.stdin, 'isTTY', {value: true});\n");
   const normalExit = ['client exit', 'terminal default'].includes(scenario);
   try {
-    const command = scenario === 'terminal default' ? ['--import', terminal, cli] : [cli, 'codex', '--cd', 'A folder 雪', '--model', 'test-model'];
+    const command = scenario === 'terminal default' ? ['--import', pathToFileURL(terminal).href, cli] : [cli, 'codex', '--cd', 'A folder 雪', '--model', 'test-model'];
     const result = spawnSync(process.execPath, command, {env, encoding: 'utf8', timeout: 25000});
     assert.equal(result.error, undefined);
     assert.equal(result.status, normalExit ? 7 : 1, result.stderr);

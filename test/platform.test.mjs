@@ -21,8 +21,8 @@ test('separate configurations recognize a foreign login service without modifyin
     const definition = serviceDefinition(record, {home, config: owner});
     mkdirSync(dirname(definition.path), {recursive: true});
     writeFileSync(definition.path, definition.text);
-    assert.equal(nativeServiceConflict(record, {home, config: owner}), false);
-    assert.equal(nativeServiceConflict(record, {home, config: other}), true);
+    assert.equal(nativeServiceConflict({backend: 'systemd'}, {home, config: owner}), false);
+    assert.equal(nativeServiceConflict({backend: 'systemd'}, {home, config: other}), true);
     assert.equal(readFileSync(definition.path, 'utf8'), definition.text);
     for (const backend of ['systemd', 'launchd', 'task-scheduler']) {
       const text = serviceDefinition({...record, backend}, {home, config: owner}).text;
