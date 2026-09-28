@@ -1,6 +1,6 @@
 {
   "name": "dsh-subagent-mcp",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.mjs && python3 test/codex_notify_test.py",

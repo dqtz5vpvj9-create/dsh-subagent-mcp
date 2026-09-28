@@ -1,43 +1,24 @@
-<h1 align="center">DSH Subagent MCP</h1>
-<p align="center"><strong>Codex 把握全局，DeepSeek 并发执行。</strong></p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dqtz5vpvj9-create/dsh-subagent-mcp/main/docs/assets/readme-hero.png" alt="DSH Subagent MCP：Codex 统筹，DeepSeek 并行工作，完成结果自动回传。" width="1200">
+</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/dsh-subagent-mcp"><img src="https://img.shields.io/npm/v/dsh-subagent-mcp?style=flat-square&amp;color=CB3837" alt="npm version"></a>
-  <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/DeepSeek-Harness-4D6BFE?style=flat-square" alt="Built on DeepSeek Harness"></a>
-  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-server-222222?style=flat-square" alt="MCP server"></a>
   <a href="skills/dsh-subagent/SKILL.md"><img src="https://img.shields.io/badge/Codex-skill-167D72?style=flat-square" alt="Codex skill included"></a>
-  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-%E2%89%A524-417E38?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node.js 24 or newer"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-A6ADBB?style=flat-square" alt="MIT license"></a>
-  <a href="https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp/stargazers"><img src="https://img.shields.io/github/stars/dqtz5vpvj9-create/dsh-subagent-mcp?style=flat-square&amp;label=Stars&amp;color=E9B44C" alt="GitHub stars"></a>
 </p>
 
 <p align="center">中文 · <a href="README.md">English</a> · <a href="#开始使用">开始使用</a> · <a href="docs/usage.md">使用指南</a></p>
 
-**给 Codex 配一组能持续协作的 DeepSeek 子代理。** 实现、排查、测试可以并行展开。Codex 可以继续处理其他工作，也可以停止推理，等结果送达后自动醒来验收。
+让 Codex 负责规划和验收，DeepSeek 子代理并行完成实现、排查与测试。每个任务完成后自动回传，唤醒 Codex 继续处理。
 
-每个子代理运行完整的 DeepSeek Harness，拥有自己的工具和会话。Codex 负责规划、委派和验收，DSH 负责把领到的任务做完。
-
-## 交付任务，后台执行，完成自动回传
-
-```mermaid
-flowchart LR
-    C[Codex 规划并分工] --> A[DSH 实现]
-    C --> B[DSH 排查]
-    C --> D[DSH 测试]
-    A --> R[完成回调]
-    B --> R
-    D --> R
-    R --> P[Codex 自动唤醒并验收]
-```
-
-| 你关心的事 | 实际体验 |
-| :--- | :--- |
-| **做完会回来** | 每个任务完成后，以 Codex 原生工具结果回传。父代理空闲时自动唤醒，忙碌时在当前轮次接收。 |
-| **等待不空转** | 后台监听器在模型之外等待，无需让模型反复查询状态。 |
-| **独立并发** | 多个代理各领一份完整任务，分别完成、分别回传；用清晰的文件归属避免相互覆盖。 |
-| **上下文接得上** | 同一个 DSH 会话可以继续追问、修复和验证。新代理默认使用标准模式，包含自动上下文压缩和工具结果裁剪。 |
-| **随时掌握方向** | 明确选择只读或工作区写入权限，查看进度，需要时中断并调整任务。 |
-| **过程可以审查** | DSH 网页按工作区归组展示子代理历史，MCP 提供实时状态和工具活动。 |
+<table>
+<tr>
+<td width="33%"><strong>并行推进</strong><br>每个代理领取完整任务，在自己的范围内独立执行。</td>
+<td width="33%"><strong>自动回传</strong><br>完成后带着答复和证据唤醒 Codex，无需轮询。</td>
+<td width="33%"><strong>持续协作</strong><br>保留上下文，让同一个代理继续修复和验证。</td>
+</tr>
+</table>
 
 ## 开始使用
 

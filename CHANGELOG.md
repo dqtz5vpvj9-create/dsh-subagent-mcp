@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 — 2026-09-28
+
+- Redesign the English and Chinese README introductions with an illustrated hero, three focused product benefits, fewer badges, and an earlier installation entry point.
+- Replace the default Mermaid overview with a packaged static image that renders consistently on GitHub and npm. Runtime behavior is unchanged.
+
 ## 0.5.0 — 2026-09-28
 
 Codex can now delegate parallel work, stop reasoning while it waits, and resume automatically when DSH returns a result. This release also groups delegated sessions by workspace and reduces the context consumed by routine MCP responses.
