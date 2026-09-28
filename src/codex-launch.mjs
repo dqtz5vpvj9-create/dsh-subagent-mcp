@@ -10,7 +10,7 @@ import {commandSpec, runCommand} from './commands.mjs';
 import {installation, locations, privateDirectory, writeJson} from './platform.mjs';
 
 export async function launchCodex(args) {
-  const spec = installation()?.codex || commandSpec('codex');
+  const spec = installation()?.codex || commandSpec('codex', {explicit: process.env.DSH_CODEX_CLI});
   if (['login', 'logout', 'doctor', '--version', '-V', '--help', '-h'].includes(args[0])) {
     runCommand(spec, args); return;
   }
@@ -30,7 +30,10 @@ export async function launchCodex(args) {
   const server = spawn(file, [...prefix, 'app-server', '--listen', endpoint, '--ws-auth', 'capability-token', '--ws-token-file', tokenFile],
     {env, windowsHide: true, stdio: ['ignore', log, log]});
   closeSync(log);
-  const serverExit = once(server, 'exit');
+  const serverExit = new Promise(resolve => {server.once('exit', resolve); server.once('error', resolve);});
+  let client;
+  const stop = () => {client?.kill('SIGTERM'); server.kill('SIGTERM');};
+  process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
     await new Promise((resolve, reject) => {server.once('spawn', resolve); server.once('error', reject);});
     let ready = false;
@@ -44,10 +47,11 @@ export async function launchCodex(args) {
       await delay(150);
     }
     if (!ready) throw new Error('Codex App Server did not start. Inspect ' + join(directory, 'app-server.log') + '. Update Codex if it does not support authenticated WebSockets.');
-    const client = spawn(file, [...prefix, '--remote', endpoint, '--remote-auth-token-env', 'DSH_CODEX_TOKEN', ...args], {env, stdio: 'inherit'});
+    client = spawn(file, [...prefix, '--remote', endpoint, '--remote-auth-token-env', 'DSH_CODEX_TOKEN', ...args], {env, stdio: 'inherit'});
     const [code] = await once(client, 'exit');
     process.exitCode = code || 0;
   } finally {
+    process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
     if (server.exitCode === null) {server.kill('SIGTERM'); await serverExit;}
     // Keep diagnostic logs, remove the connection's bearer credentials.
     rmSync(tokenFile, {force: true}); rmSync(connectionFile, {force: true});

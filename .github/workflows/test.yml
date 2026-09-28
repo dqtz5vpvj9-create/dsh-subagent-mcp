@@ -23,11 +23,7 @@ jobs:
         env:
           DSH_PACKAGE_TEST: '1'
           DSH_NATIVE_SERVICE_TEST: '1'
-      - name: Install the supported DSH runtime
-        run: npm install --prefix "${{ runner.temp }}/dsh-runtime" --no-audit --no-fund @deepseek-ai/dsh@0.1.5-rc.1
-      - name: Validate real DSH presets and persistence
-        run: node --test test/runtime.test.mjs
+      - name: Validate first installation with real Codex and DSH
+        run: node --test test/fresh-install.test.mjs
         env:
-          DSH_RUNTIME_TEST: '1'
-          DSH_CLI: '${{ runner.temp }}/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js'
-          DEEPSEEK_API_KEY: unused-runtime-fixture-key
+          DSH_FRESH_INSTALL_TEST: '1'

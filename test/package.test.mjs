@@ -21,7 +21,7 @@ if(a[0]==='--version')console.log('codex fixture');
 else if(a[0]==='mcp'&&a[1]==='add'){
  if(existsSync(fail)){unlinkSync(fail);console.error('registration fixture failure');process.exit(2);}
  const i=a.indexOf('--');writeFileSync(path,JSON.stringify({transport:{command:a[i+1],args:a.slice(i+2)}}));
-}else if(a[0]==='mcp'&&a[1]==='get')console.log(readFileSync(path,'utf8'));
+}else if(a[0]==='mcp'&&a[1]==='list')console.log(JSON.stringify(existsSync(path)?[{name:'dsh_subagent',...JSON.parse(readFileSync(path,'utf8'))}]:[]));
 else if(a[0]==='mcp'&&a[1]==='remove')unlinkSync(path);
 else process.exit(3);
 `);
@@ -54,6 +54,8 @@ else process.exit(3);
     run(installed, 'stop'); run(installed, 'start');
     assert.equal(JSON.parse(run(installed, 'doctor', '--json')).ok, true);
     writeFileSync(join(state, 'retained-evidence.txt'), 'keep');
+    // Users can remove the MCP entry themselves before uninstalling.
+    if (service === 'background') rmSync(codexState);
     run(installed, 'uninstall');
     assert.ok(!existsSync(join(config, 'installation.json')));
     assert.ok(!existsSync(join(env.CODEX_HOME, 'skills/dsh-subagent')));

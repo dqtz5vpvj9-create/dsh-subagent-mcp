@@ -1,5 +1,7 @@
-import {existsSync, readFileSync, lstatSync, realpathSync, symlinkSync, unlinkSync, rmSync, mkdirSync} from 'node:fs';
+import {existsSync, readFileSync, writeFileSync, lstatSync, realpathSync, symlinkSync, unlinkSync, rmSync, mkdirSync} from 'node:fs';
 import {join} from 'node:path';
+import {homedir} from 'node:os';
+import {spawnSync} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {projectRoot, resolveDshCli} from './config.mjs';
@@ -10,6 +12,7 @@ import {backendDefault, installService, startService, stopService, statusService
 import {bridgeClient} from './bridge-client.mjs';
 
 export const TESTED_DSH = '0.1.5-rc.1';
+export const TESTED_CODEX = '0.158.0';
 const version = () => JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')).version;
 
 function skillTarget() {return join(locations().codex, 'skills/dsh-subagent');}
@@ -25,7 +28,7 @@ function ensureDependencies(installMissing) {
   let dsh, codex;
   try {dsh = resolveDshCli();} catch (error) {if (process.env.DSH_CLI) throw error;}
   try {codex = commandSpec('codex', {prefix, explicit: process.env.DSH_CODEX_CLI});} catch (error) {if (process.env.DSH_CODEX_CLI) throw error;}
-  const missing = [...(!dsh ? [`@deepseek-ai/dsh@${TESTED_DSH}`] : []), ...(!codex ? ['@openai/codex'] : [])];
+  const missing = [...(!dsh ? [`@deepseek-ai/dsh@${TESTED_DSH}`] : []), ...(!codex ? [`@openai/codex@${TESTED_CODEX}`] : [])];
   if (missing.length) {
     if (!installMissing) throw new Error('Missing dependencies: ' + missing.join(', ') + '. Rerun setup without --no-install-deps.');
     console.log('Installing missing dependencies for this user: ' + missing.join(', '));
@@ -44,6 +47,11 @@ export function registerCodex(record) {
   runCommand(record.codex, ['mcp', 'add', 'dsh_subagent', ...env.flatMap(value => ['--env', value]), '--', record.node, join(record.root, 'src/cli.mjs')]);
 }
 
+function codexRegistration(codex) {
+  return JSON.parse(runCommand(codex, ['mcp', 'list', '--json'], {stdio: 'pipe', encoding: 'utf8'}))
+    .find(server => server.name === 'dsh_subagent');
+}
+
 export async function setup(argv, {source = false} = {}) {
   const {values: args} = parseArgs({args: argv, options: {
     skill: {type: 'boolean'}, 'no-skill': {type: 'boolean'}, 'capture-key': {type: 'boolean'},
@@ -59,8 +67,11 @@ export async function setup(argv, {source = false} = {}) {
   const status = await statusService();
   if (status.running && status.active.length) throw new Error('Active DSH tasks are running. Finish or interrupt them before setup or upgrade.');
   const paths = locations();
-  const legacy = !previous && process.platform === 'linux' && existsSync(join(paths.state, 'server.sock'));
-  if (legacy) {
+  const legacyUnitPath = join(homedir(), '.config/systemd/user/dsh-subagent-mcp.service');
+  const legacyUnit = !previous && process.platform === 'linux' && existsSync(legacyUnitPath) ? readFileSync(legacyUnitPath) : null;
+  const legacyRunning = !previous && process.platform === 'linux' && existsSync(join(paths.state, 'server.sock'));
+  const legacyEnabled = legacyUnit && spawnSync('systemctl', ['--user', 'is-enabled', 'dsh-subagent-mcp.service'], {stdio: 'ignore'}).status === 0;
+  if (legacyRunning) {
     let client;
     try {
       client = await bridgeClient();
@@ -75,6 +86,9 @@ export async function setup(argv, {source = false} = {}) {
   privateDirectory(paths.config); privateDirectory(paths.state); privateDirectory(paths.data);
   console.log(`DSH Subagent MCP ${version()} · ${process.platform}\nPreparing installation…`);
   const dependencies = ensureDependencies(!args['no-install-deps']);
+  const oldRegistration = codexRegistration(dependencies.codex);
+  if (oldRegistration?.transport?.url) throw new Error('Codex already has a remote MCP server named dsh_subagent. Rename it before installing this local bridge.');
+  const oldSkill = ownsSkill() ? realpathSync(skillTarget()) : null;
   const providerPath = join(paths.config, 'provider.json');
   if (args['capture-key']) {
     const provider = Object.fromEntries(['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
@@ -89,8 +103,9 @@ export async function setup(argv, {source = false} = {}) {
   const env = Object.fromEntries(['PATH', 'DSH_HOME', 'TMPDIR', 'CODEX_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME', 'DSH_SUBAGENT_CONFIG', 'DSH_SUBAGENT_DATA'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
   const record = {version: version(), root, node: process.execPath, ...dependencies, backend, state: paths.state, env, skill: !args['no-skill']};
   console.log('Connecting the background service and Codex…');
-  if (legacy) runCommand(['systemctl'], ['--user', 'stop', 'dsh-subagent-mcp.service']);
+  if (legacyRunning) runCommand(['systemctl'], ['--user', 'stop', 'dsh-subagent-mcp.service']);
   await stopService();
+  let registered = false, skillChanged = false;
   try {
     if (previous && previous.backend !== backend) await removeService(previous);
     writeJson(installationFile(), record);
@@ -103,9 +118,11 @@ export async function setup(argv, {source = false} = {}) {
     }
     await startService(record);
     registerCodex(record);
+    registered = true;
     if (record.skill) {
       mkdirSync(join(paths.codex, 'skills'), {recursive: true});
       if (existingSkill()) unlinkSync(skillTarget());
+      skillChanged = true;
       symlinkSync(join(root, 'skills/dsh-subagent'), skillTarget(), process.platform === 'win32' ? 'junction' : 'dir');
     }
     runCommand([process.execPath, join(root, 'scripts/uninstall-web.mjs')]);
@@ -113,10 +130,27 @@ export async function setup(argv, {source = false} = {}) {
     await removeService(record).catch(cleanup => console.error('Service cleanup: ' + cleanup.message));
     if (previous) {
       writeJson(installationFile(), previous);
-      installService(previous); await startService(previous); registerCodex(previous);
-      if (previous.skill && !existingSkill()) symlinkSync(join(previous.root, 'skills/dsh-subagent'), skillTarget(), process.platform === 'win32' ? 'junction' : 'dir');
+      installService(previous); await startService(previous);
       console.error('The previous installation was restored.');
-    } else if (existsSync(installationFile())) unlinkSync(installationFile());
+    } else {
+      if (existsSync(installationFile())) unlinkSync(installationFile());
+      if (legacyUnit) {
+        writeFileSync(legacyUnitPath, legacyUnit);
+        runCommand(['systemctl'], ['--user', 'daemon-reload']);
+        if (legacyEnabled) runCommand(['systemctl'], ['--user', 'enable', 'dsh-subagent-mcp.service']);
+        if (legacyRunning) runCommand(['systemctl'], ['--user', 'start', 'dsh-subagent-mcp.service']);
+      }
+    }
+    if (registered) {
+      if (oldRegistration) {
+        const {command, args = [], env = {}} = oldRegistration.transport;
+        runCommand(dependencies.codex, ['mcp', 'add', 'dsh_subagent', ...Object.entries(env).flatMap(([key, value]) => ['--env', key + '=' + value]), '--', command, ...args]);
+      } else runCommand(dependencies.codex, ['mcp', 'remove', 'dsh_subagent']);
+    }
+    if (skillChanged) {
+      if (existingSkill()) unlinkSync(skillTarget());
+      if (oldSkill) symlinkSync(oldSkill, skillTarget(), process.platform === 'win32' ? 'junction' : 'dir');
+    }
     throw error;
   }
   console.log('\nInstallation complete.');
@@ -130,9 +164,9 @@ export async function setup(argv, {source = false} = {}) {
 export async function uninstall({purge = false} = {}) {
   const record = installation();
   if (!record) {console.log('No managed installation found.'); return;}
+  const registered = codexRegistration(record.codex);
   await removeService(record);
-  const registered = JSON.parse(runCommand(record.codex, ['mcp', 'get', 'dsh_subagent', '--json'], {stdio: 'pipe', encoding: 'utf8'}));
-  if (registered.transport?.args?.some(arg => arg === join(record.root, 'src/cli.mjs'))) runCommand(record.codex, ['mcp', 'remove', 'dsh_subagent']);
+  if (registered?.transport?.args?.some(arg => arg === join(record.root, 'src/cli.mjs'))) runCommand(record.codex, ['mcp', 'remove', 'dsh_subagent']);
   if (ownsSkill()) unlinkSync(skillTarget());
   unlinkSync(installationFile());
   for (const name of ['versions', 'dependencies']) rmSync(join(locations().data, name), {recursive: true, force: true});
