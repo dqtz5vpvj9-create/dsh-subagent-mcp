@@ -22,7 +22,7 @@ deadline. `wait_outcome: timeout` and `next_action: continue_waiting`
 mean the parent must keep supervising the task. Completion between calls remains
 available from persisted state, so the next wait returns it immediately.
 
-In Codex, the bundled skill registers `scripts/codex_notify.py` after each start
+In Codex, the bundled skill registers `scripts/codex_notify.mjs` after each start
 or follow-up. Its default delivery is App Server `turn/start.toolOutput`: one
 host-side wait, then a `dsh_completion` tool result containing the answer and
 evidence path. The parent can do independent work or yield until that result
@@ -42,7 +42,7 @@ Use these options for a specific progress or debugging question. A registered
 callback delivers the result; use `dsh_wait` when no callback is available.
 
 The native Codex callback can wake an ended parent turn. It requires the parent
-App Server to support `turn/start.toolOutput`, Python 3, Node.js and this
+App Server to support `turn/start.toolOutput`, Node.js and this
 package's dependencies. `--delivery queue` explicitly selects legacy queued
 input; a failed native delivery never retries via queue. The callback defaults
 to the parent `CODEX_THREAD_ID` and local App Server; use `--remote` for an

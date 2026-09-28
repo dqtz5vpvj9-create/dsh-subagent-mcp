@@ -1,77 +1,132 @@
 # Installation
 
-
-The installer targets Linux with systemd user services. Install Node.js matching [`engines.node`](../package.json), Python 3 for the callback helper, Codex CLI, and the Node.js distribution of DSH. Existing working DSH installations can be reused. See the [validation record](validation.md) for tested versions.
-
-Automatic completion delivery requires a running Codex App Server that supports `turn/start.toolOutput`. It was verified with Codex CLI 0.157.1 and App Server 0.157.0. The helper uses the parent's `CODEX_THREAD_ID` and local control socket by default. A remote parent can be selected with `--remote`; see [usage](usage.md). Clients without this capability use one pending `dsh_wait` instead.
+Windows, Linux and macOS use the same command:
 
 ```sh
-npx -y dsh-subagent-mcp@latest setup --skill
+npx -y dsh-subagent-mcp@latest setup
 ```
 
-DSH needs a configured provider credential. If you already use DSH's credential store, the service can reuse it. If your key exists only in the current shell as `DEEPSEEK_API_KEY`, use:
+Run it in a normal terminal with Node.js 24 or newer. Setup reuses an existing
+Node.js DSH installation and Codex CLI, or installs missing dependencies in a
+private user directory. It prepares the DSH profile, starts the background
+service, connects Codex's MCP tools, and installs the companion skill. Python,
+root access and a global npm installation are not required.
+
+The managed DSH dependency is pinned to the version validated by this release.
+Setup preserves an existing DSH installation and its provider configuration.
+
+## Connect your account
+
+If DSH already has working provider credentials, keep using them. To save a key
+from the current terminal for the background service:
 
 ```sh
-npx -y dsh-subagent-mcp@latest setup --skill --capture-key
+npx -y dsh-subagent-mcp@latest setup --capture-key
 ```
 
-`--capture-key` saves the current provider environment in a mode-0600 service file without printing it. It preserves an existing file. Keys never belong in task prompts or Codex's MCP configuration.
+Set `DEEPSEEK_API_KEY` before running that command. `DEEPSEEK_BASE_URL` is also
+supported. The values go into a private provider file, never into Codex's MCP
+configuration or command output. Repeating `--capture-key` updates the supplied
+values while preserving other provider settings. Existing Linux `environment`
+files remain readable during migration.
 
-The installer creates a dedicated `codex-subagent` DSH profile, installs and starts a systemd user service, registers `dsh_subagent` with Codex, and optionally links the bundled skill into `${CODEX_HOME:-~/.codex}/skills`. It does not modify installed DSH source. Re-running setup restarts this service, so finish or interrupt active bridge tasks before upgrading.
+If Codex is newly installed, sign in with:
 
-Open a new Codex session, check `/mcp`, and ask:
+```sh
+npx -y dsh-subagent-mcp codex login
+```
+
+## Start working
+
+Open a new Codex session and ask:
 
 ```text
 Use $dsh-subagent to investigate this repository in read-only mode.
 Find where request cancellation reaches the worker process.
-Keep the DSH agent ID so we can ask follow-up questions.
 ```
 
-Then:
-
-```text
-Show that agent's progress and latest tool activity.
-```
-
-```text
-Interrupt it. Once it has stopped, ask the same agent to inspect timeout handling.
-```
-
-
-## npm installation and upgrades
-
-The CLI installs its package and dependencies under
-`${XDG_DATA_HOME:-~/.local/share}/dsh-subagent-mcp`. Service and skill
-paths point to that installation, so clearing the npx cache does not break them.
-Finish or interrupt active tasks before rerunning setup to upgrade.
-
-DSH Web discovers the persisted workspace parent and its subagents directly.
-Setup removes a Web relay entry left by older releases. The `web` command and
-`setup --web` are no longer supported.
-
-For sessions created before workspace grouping, finish active tasks, stop the
-service, run `npx -y dsh-subagent-mcp@latest adopt`, and start the service again.
-Adoption updates historical session metadata; it skips sessions held by a live
-process and reports workspaces that cannot be mounted. New agents are grouped
-automatically.
-
-Callback results use a fresh directory under `TMPDIR`, otherwise
-`/mnt/cache/data-cache` if it exists, then the system temporary directory.
-Use the helper's `--output-dir` to choose an explicit location. Retain the evidence
-needed for acceptance and remove temporary results once accepted.
-
-You can also install the CLI globally with `npm install -g dsh-subagent-mcp`
-and run `dsh-subagent-mcp setup --skill`. The same persistent runtime is used.
-
-## Development from source
+On **Windows**, start Codex through the supplied launcher for automatic completion
+callbacks:
 
 ```sh
-git clone https://github.com/dqtz5vpvj9-create/dsh-subagent-mcp.git
-cd dsh-subagent-mcp
-npm ci --ignore-scripts
-npm run setup -- --skill
+npx -y dsh-subagent-mcp codex
 ```
 
-Source setup points the service at that checkout. When migrating an existing
-source installation to npm, remove its old skill symlink before using `--skill`;
-the installer preserves conflicting skill locations instead of replacing them.
+The launcher connects Codex to its own local App Server with authentication and
+passes the callback connection to the parent session. It uses your existing Codex
+configuration and login. Arguments such as `--cd` and `--model` are forwarded.
+Linux and macOS can use ordinary Codex sessions with their local control socket,
+or use the same launcher.
+
+Automatic callbacks require a Codex App Server with `turn/start.toolOutput`.
+The listener checks the exact parent before registering. If the client lacks
+that capability, use a single pending `dsh_wait`; it is not an automatic wakeup.
+See [completion delivery](usage.md) for the protocol and remote-parent options.
+
+## Check and manage the installation
+
+```sh
+npx -y dsh-subagent-mcp doctor
+npx -y dsh-subagent-mcp status
+npx -y dsh-subagent-mcp logs
+npx -y dsh-subagent-mcp restart
+```
+
+`doctor` checks the runtime, service and MCP connection separately. Run it inside
+Codex to also check access to the parent thread. `--json` is available for scripts.
+The checks do not submit a model task or verify provider billing/account access.
+
+| System | Background startup | Installation directory |
+| :--- | :--- | :--- |
+| Windows | Per-user Scheduled Task | `%LOCALAPPDATA%\dsh-subagent-mcp` |
+| macOS | User LaunchAgent | `~/Library/Application Support/dsh-subagent-mcp` |
+| Linux | systemd user service when available | `${XDG_DATA_HOME:-~/.local/share}/dsh-subagent-mcp` |
+
+On systems without a usable login service, setup uses a detached background
+process. Codex starts it on connection; closing an MCP connection leaves tasks
+running. You can choose this mode explicitly with `setup --service background`.
+Setup reports the selected backend. It does not ask for elevated privileges to
+register a login service.
+
+On Windows, local IPC uses an authenticated loopback connection and private
+Windows ACLs. Linux and macOS use a mode-0600 Unix socket in a private directory.
+No bridge port is exposed to the network.
+
+## Upgrade and uninstall
+
+```sh
+npx -y dsh-subagent-mcp@latest setup
+npx -y dsh-subagent-mcp uninstall
+```
+
+Setup stages a versioned installation outside the npx cache before switching the
+service. A failed activation restores the previous managed installation.
+Upgrades and ordinary stops refuse to interrupt active tasks. Finish those tasks
+first; use `stop --force` only when you intend to interrupt them.
+
+Uninstall removes the service, owned skill link, MCP registration and managed
+packages. It retains bridge history, captured provider settings and DSH sessions.
+`uninstall --purge` also removes bridge history and captured settings; DSH's own
+sessions remain intact. A globally installed CLI can then be removed with
+`npm uninstall -g dsh-subagent-mcp`.
+
+## Advanced configuration
+
+- `--no-install-deps` requires preinstalled DSH and Codex.
+- `--no-skill` preserves a separately managed skill. Setup also preserves
+  conflicting custom skill directories and tells you how to continue.
+- `--skill` remains accepted for commands written for earlier versions.
+- `DSH_CLI` selects DSH's JavaScript entrypoint; `DSH_HOME` selects its home.
+- `DSH_SUBAGENT_DATA`, `DSH_SUBAGENT_CONFIG` and `DSH_SUBAGENT_STATE` override
+  bridge directories. Linux also follows the corresponding XDG variables.
+- `CODEX_HOME` selects the Codex home. `DSH_CODEX_CLI` can select an explicit
+  executable or JavaScript CLI entrypoint.
+
+For source development, `npm ci --ignore-scripts` followed by
+`npm run setup -- --service background` points the service at that checkout.
+For legacy session migration, `adopt` still requires Linux's `flock`; new sessions
+are grouped by workspace on all three platforms.
+
+Callback artifacts use `TMPDIR`, otherwise `/mnt/cache/data-cache` if present,
+then the system temporary directory. Keep evidence needed for review and remove
+callback directories after acceptance. Use `--output-dir` to choose a fresh path.

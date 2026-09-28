@@ -1,48 +1,65 @@
 #!/usr/bin/env node
-import {readFileSync} from 'node:fs';
+import {readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
-import {homedir} from 'node:os';
-import {spawnSync} from 'node:child_process';
-import {projectRoot, resolveDshCli} from './config.mjs';
-import {installPackage} from './install-package.mjs';
+import {parseArgs} from 'node:util';
+import {projectRoot} from './config.mjs';
+import {locations, installation} from './platform.mjs';
 
-const [command,...args]=process.argv.slice(2);
-const version=JSON.parse(readFileSync(join(projectRoot,'package.json'),'utf8')).version;
+const [command, ...args] = process.argv.slice(2);
+const version = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')).version;
+const flags = options => parseArgs({args, options}).values;
 try {
-  if(command==='--version')console.log(version);
-  else if(command==='--help'||command==='help')console.log(`DSH Subagent MCP ${version}
+  if (command === '--version' || command === '-V') console.log(version);
+  else if (['--help', '-h', 'help'].includes(command)) console.log(`DSH Subagent MCP ${version}
 
 Usage:
-  dsh-subagent-mcp setup [--skill] [--capture-key]
+  dsh-subagent-mcp setup [--capture-key] [--service auto|background]
+  dsh-subagent-mcp doctor [--json]
+  dsh-subagent-mcp status [--json]
+  dsh-subagent-mcp start | stop [--force] | restart
+  dsh-subagent-mcp logs
+  dsh-subagent-mcp upgrade
+  dsh-subagent-mcp uninstall [--purge]
+  dsh-subagent-mcp codex [Codex arguments]
+  dsh-subagent-mcp notify --agent AGENT_ID
   dsh-subagent-mcp adopt
-  dsh-subagent-mcp [--daemon]
 
-setup  Install a persistent service and register it with Codex.
-adopt  Move sessions created before this version under their workspace's
-       subagent mount point, so DSH Web lists them there instead of beside
-       your own sessions. Stop the service first.
-
-Requires Node.js 24+, Linux/systemd, Codex CLI, and configured DSH.
-Finish or interrupt running bridge tasks before rerunning setup.`);
-  else if(command==='setup') {
-    if(process.platform!=='linux')throw new Error('Setup requires Linux with systemd user services.');
-    const allowed=new Set(['--skill','--capture-key']);
-    for(const arg of args)if(!allowed.has(arg))throw new Error('Unknown option: '+arg);
-    resolveDshCli();
-    const prefix=join(process.env.XDG_DATA_HOME??join(homedir(),'.local/share'),'dsh-subagent-mcp');
-    let root=join(prefix,'node_modules/dsh-subagent-mcp');
-    root=installPackage(projectRoot,prefix);
-    const run=(file,flags=[])=>{
-      const result=spawnSync(process.execPath,[join(root,'scripts',file),...flags],{stdio:'inherit'});
-      if(result.error)throw result.error;
-      if(result.status!==0)throw new Error(file+' failed ('+result.status+')');
-    };
-    run('install.mjs',args);
-    // Older installs left a plugin loaded in the DSH Web process.
-    run('uninstall-web.mjs');
-  } else if(command==='adopt') {
-    if(args.length)throw new Error('Unknown option: '+args[0]);
+Windows, Linux and macOS. Node.js 24+; no Python required.
+Setup installs missing DSH/Codex dependencies, a per-user background service,
+Codex MCP registration and the companion skill. No administrator access needed.
+Use --no-install-deps to manage dependencies yourself, or --no-skill to keep a
+custom skill. --skill remains accepted for older installation commands.
+Uninstall preserves history and credentials unless --purge is specified.
+Upgrades and ordinary stops refuse to interrupt active tasks.`);
+  else if (command === 'setup') await (await import('./setup.mjs')).setup(args);
+  else if (command === 'doctor') await (await import('./doctor.mjs')).doctor(flags({json: {type: 'boolean'}}));
+  else if (command === 'status') {
+    const {json} = flags({json: {type: 'boolean'}});
+    const result = await (await import('./service.mjs')).statusService();
+    console.log(json ? JSON.stringify(result) : result.running ? `Running; ${result.active.length} active task(s).` : 'Stopped. Run dsh-subagent-mcp start.');
+    if (!result.running) process.exitCode = 1;
+  } else if (command === 'start' || command === 'restart' || command === 'stop') {
+    const options = flags(command === 'stop' ? {force: {type: 'boolean'}} : {});
+    const service = await import('./service.mjs');
+    if (command !== 'start') await service.stopService(options);
+    if (command !== 'stop') await service.startService();
+    console.log(command === 'stop' ? 'Stopped.' : 'Ready.');
+  } else if (command === 'logs') {
+    flags({});
+    const path = join(locations().state, 'daemon.log');
+    console.log(existsSync(path) ? readFileSync(path, 'utf8').split('\n').slice(-100).join('\n') : 'No service log yet.');
+  } else if (command === 'upgrade') {
+    flags({});
+    const status = await (await import('./service.mjs')).statusService();
+    if (status.running && status.active.length) throw new Error('Finish or interrupt active DSH tasks before upgrading.');
+    (await import('./commands.mjs')).runCommand('npm', ['exec', '--yes', '--package=dsh-subagent-mcp@latest', '--', 'dsh-subagent-mcp', 'setup', ...(installation()?.skill === false ? ['--no-skill'] : [])]);
+  } else if (command === 'uninstall') await (await import('./setup.mjs')).uninstall(flags({purge: {type: 'boolean'}}));
+  else if (command === 'notify') await (await import('./notify.mjs')).notify(args);
+  else if (command === 'codex') await (await import('./codex-launch.mjs')).launchCodex(args);
+  else if (command === 'adopt') {
+    flags({});
+    if (process.platform !== 'linux') throw new Error('Legacy session adoption requires Linux flock. Normal DSH sessions work on all supported platforms.');
     await (await import('./adopt.mjs')).adopt();
-  } else if(command===undefined||command==='--daemon')await (await import('./server.mjs')).main();
-  else throw new Error('Unknown command: '+command+'. Run dsh-subagent-mcp --help.');
-} catch(error) {console.error(error.message);process.exitCode=1;}
+  } else if (command === undefined || command === '--daemon') await (await import('./server.mjs')).main();
+  else throw new Error('Unknown command: ' + command + '. Run dsh-subagent-mcp --help.');
+} catch (error) {console.error(error.message); process.exitCode = 1;}

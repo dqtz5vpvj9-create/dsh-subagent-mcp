@@ -23,10 +23,10 @@ Give Codex a team of DeepSeek agents. Let them implement, investigate, and test 
 ## Get started
 
 ```sh
-npx -y dsh-subagent-mcp@latest setup --skill
+npx -y dsh-subagent-mcp@latest setup
 ```
 
-Setup connects DSH to Codex and installs the skill. See the [installation guide](docs/setup.md) for environment requirements, credentials, and upgrades.
+Windows, Linux and macOS use the same installer. It reuses existing DSH and Codex installations or installs missing dependencies, and includes the skill. See the [installation guide](docs/setup.md) for Windows callbacks, account setup and upgrades.
 
 Open a new Codex session and ask:
 

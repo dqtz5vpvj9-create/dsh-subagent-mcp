@@ -2,7 +2,9 @@
 
 
 ```sh
-systemctl --user status dsh-subagent-mcp.service
+npx -y dsh-subagent-mcp status
+npx -y dsh-subagent-mcp doctor
+npx -y dsh-subagent-mcp logs
 codex mcp get dsh_subagent
 npm test
 ```
@@ -16,18 +18,17 @@ node test/mcp-live.mjs
 
 Set `TMPDIR` to choose the temporary-file location. Raw validation reports are generated locally and excluded from Git. See [validation coverage and limits](validation.md).
 
-State lives under `~/.local/state/dsh-subagent-mcp`; full conversation history belongs to DSH's configured home. The socket is mode 0600 inside a mode-0700 directory. Provider environment, when captured, lives at `~/.config/dsh-subagent-mcp/environment`. Refresh that private file when rotating credentials, then restart the service.
+Bridge state follows the platform locations in the [installation guide](setup.md); full conversation history belongs to DSH's configured home. Linux and macOS use a private Unix socket. Windows uses authenticated loopback IPC with directory ACLs. Captured provider settings live in `provider.json` under the bridge configuration directory. Use `setup --capture-key` to rotate them.
 
 Advanced installation overrides: `DSH_CLI` (the JavaScript CLI entrypoint), `DSH_HOME`, and `DSH_SUBAGENT_STATE`.
 
 To disconnect without deleting source or history:
 
 ```sh
-codex mcp remove dsh_subagent
-systemctl --user disable --now dsh-subagent-mcp.service
+npx -y dsh-subagent-mcp uninstall
 ```
 
-The optional skill remains a link to [`skills/dsh-subagent`](../skills/dsh-subagent); remove that link separately if you no longer need it.
+Uninstall also removes the owned skill link and managed packages while retaining history and provider settings.
 
 
 ## DSH Web history and live status

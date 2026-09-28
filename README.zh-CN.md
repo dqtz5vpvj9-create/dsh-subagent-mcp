@@ -23,10 +23,10 @@ DSH Subagent MCP 让 Codex 直接调用 DeepSeek 子代理。Codex 负责规划�
 ## 开始使用
 
 ```sh
-npx -y dsh-subagent-mcp@latest setup --skill
+npx -y dsh-subagent-mcp@latest setup
 ```
 
-安装器会将 DSH 接入 Codex，并安装配套 skill。环境要求、凭据配置和升级方法见[安装指南](docs/setup.md)。
+Windows、Linux 和 macOS 使用同一个安装命令。安装器会复用已有的 DSH 和 Codex，按需安装缺少的依赖，并装好配套 skill。Windows 回调、账号配置和升级方法见[安装指南](docs/setup.md)。
 
 新开 Codex 会话后，可以这样安排任务：
 

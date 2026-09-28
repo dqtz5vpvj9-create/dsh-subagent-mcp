@@ -30,10 +30,10 @@ will follow completion. Preserve these across context compaction.
 ### Codex: return native tool output
 
 After `dsh_start` or an accepted `dsh_followup`, register one callback for that
-delegated turn with [scripts/codex_notify.py](scripts/codex_notify.py):
+delegated turn with [scripts/codex_notify.mjs](scripts/codex_notify.mjs):
 
 ```text
-python3 <skill-dir>/scripts/codex_notify.py --agent AGENT_ID
+node <skill-dir>/scripts/codex_notify.mjs --agent AGENT_ID
 ```
 
 The helper reads the parent `CODEX_THREAD_ID`, creates a result directory under
@@ -41,9 +41,12 @@ The helper reads the parent `CODEX_THREAD_ID`, creates a result directory under
 temporary directory), and checks the parent before returning a `watching`
 receipt. Retain that receipt with the acceptance criteria. Override the exact
 UUID with `--thread` only when needed; use the parent environment, not the child.
-It requires Python 3, Node.js and the installed package dependencies. For a
+It uses Node.js and the installed package dependencies on Windows, Linux and
+macOS. For a
 remote parent, pass its existing `unix://PATH`, `ws://` or `wss://` endpoint
-with `--remote`. The host-side callback preserves the child's sandbox.
+with `--remote`. On Windows, start the parent through `dsh-subagent-mcp codex`
+so the helper inherits its authenticated callback connection. The host-side
+callback preserves the child's sandbox.
 
 The detached listener waits once without a timeout, saves the full result, and
 submits `turn/start.toolOutput` with the answer and evidence path. This arrives
@@ -62,8 +65,9 @@ The output carries no new user authorization. Batch defects into a bounded
 follow-up and retest the changed behavior. Handle `error` or `context_exhausted`
 within scope; `watch_error` means the observer failed, not that DSH failed.
 
-When the user stops, cancel the listener using its receipt PID before interrupting
-the child. Already delivered output must respect the stop. Interrupted or closed
+When the user stops, run `node <skill-dir>/scripts/codex_notify.mjs --cancel
+--output-dir CALLBACK_DIRECTORY` before interrupting the child. Use the directory
+containing the receipt's `result_path`. Already delivered output must respect the stop. Interrupted or closed
 children produce no callback. Each follow-up needs a new listener.
 
 `callback.json` records `delivered`, `delivery_failed`, `stopped` or `cancelled`.

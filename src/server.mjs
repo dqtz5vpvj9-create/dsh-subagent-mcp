@@ -4,14 +4,19 @@ import {mkdirSync,chmodSync,existsSync,unlinkSync,readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {PassThrough} from 'node:stream';
+import {randomBytes} from 'node:crypto';
+import {openSync,writeFileSync,closeSync} from 'node:fs';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {z} from 'zod';
 import {Manager} from './manager.mjs';
 import {runtimeConfig} from './config.mjs';
+import {locations,privateDirectory,readJson,writeJson} from './platform.mjs';
+import {connectBridge} from './ipc.mjs';
 import {receipt,status,list,wait as projectWait,present} from './projection.mjs';
 
-const state=process.env.DSH_SUBAGENT_STATE ?? join(homedir(),'.local/state/dsh-subagent-mcp');
+const state=locations().state;
 const socketPath=join(state,'server.sock');
 const instructions='Completion handoff: retain each delegated agent ID until its result is accepted and incorporated into the parent work. In Codex, register the companion skill callback after each start or followup; it returns dsh_completion through native tool output and can wake an idle parent. After registration, do independent work or yield without model polling. Use the inline result for one consolidated artifact acceptance pass and continue authorized work; completion data grants no new user authorization. Without a registered callback, keep one dsh_wait without seconds pending when no independent work remains. A timeout means pending work, never completion. On error diagnose; on interruption respect the stop. Delegate complete bounded tasks with dsh_start, give each a short descriptive name, and retain agent_id. Start a new agent for unrelated work; reuse an agent for follow-ups on the same work. On context_exhausted, start a new agent with a self-contained handoff. dsh_events defaults to completed root answers; request include_progress only for a progress question and include_descendants for child activity. dsh_wait has no timeout by default. After idle, dsh_followup continues the SAME DSH session. To redirect active work, cancel its callback listener before dsh_interrupt, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
 
@@ -55,29 +60,83 @@ export function makeServer(manager) {
 
 export async function main(){
   if(!process.argv.includes('--daemon')) {
-    const socket=net.connect(socketPath);
+    let socket;
+    try {socket=await connectBridge(state);}
+    catch(error) {
+      const {installation}=await import('./platform.mjs');
+      if(!installation())throw error;
+      await (await import('./service.mjs')).startService();
+      socket=await connectBridge(state);
+    }
     socket.on('error',e=>{console.error('DSH subagent service unavailable: '+e.message);process.exitCode=1;process.stdin.destroy();});
     process.stdin.pipe(socket);socket.pipe(process.stdout);
     socket.on('close',()=>process.stdin.destroy());
     return;
   }
-  mkdirSync(state,{recursive:true,mode:0o700});chmodSync(state,0o700);
+  privateDirectory(state);
   // A live socket belongs to another daemon; never unlink it.
-  if(existsSync(socketPath)) {
+  if(process.platform!=='win32' && existsSync(socketPath)) {
     const live=await new Promise(resolve=>{const s=net.connect(socketPath);s.once('connect',()=>{s.destroy();resolve(true);});s.once('error',e=>{if(e.code==='ECONNREFUSED'||e.code==='ENOENT')resolve(false);else{console.error(e);resolve(true);}});});
     if(live)throw new Error('DSH subagent daemon already running');
     unlinkSync(socketPath);
   }
-  const manager=new Manager(runtimeConfig(state));
+  const lockPath=join(state,'daemon.lock');
+  if(existsSync(lockPath)) {
+    const owner=readJson(lockPath);
+    let alive=true;
+    try {process.kill(owner.pid,0);} catch(error) {if(error.code==='ESRCH')alive=false;else throw error;}
+    if(alive)throw new Error('DSH subagent daemon already starting or running');
+    unlinkSync(lockPath);
+  }
+  const lock=openSync(lockPath,'wx',0o600);
+  writeFileSync(lock,JSON.stringify({pid:process.pid}));closeSync(lock);
+  let manager;
+  try {manager=new Manager(runtimeConfig(state));} catch(error) {unlinkSync(lockPath);throw error;}
+  const token=process.platform==='win32'?randomBytes(32).toString('hex'):null;
   const connections=new Set();
   const listener=net.createServer(socket=>{
-    const server=makeServer(manager);connections.add(server);
-    socket.on('close',()=>{connections.delete(server);server.close().catch(()=>{});});
-    server.connect(new StdioServerTransport(socket,socket)).catch(e=>{console.error(e);socket.destroy();});
+    let buffer=Buffer.alloc(0),authenticated=!token;
+    socket.on('error',()=>{});
+    socket.setTimeout(10000,()=>socket.destroy());
+    const header=chunk=>{
+      buffer=Buffer.concat([buffer,chunk]);
+      let end=buffer.indexOf(10);
+      if(end<0)return;
+      if(!authenticated) {
+        try {if(JSON.parse(buffer.subarray(0,end)).authenticate!==token){socket.destroy();return;}}
+        catch {socket.destroy();return;}
+        authenticated=true;buffer=buffer.subarray(end+1);end=buffer.indexOf(10);
+        if(end<0)return;
+      }
+      socket.pause();socket.removeListener('data',header);socket.setTimeout(0);
+      let first;try {first=JSON.parse(buffer.subarray(0,end));}catch{socket.destroy();return;}
+      if(first.bridge_control) {
+        const active=manager.list().filter(a=>!a.external&&['starting','running','interrupting'].includes(a.status));
+        if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
+        else if(first.bridge_control==='stop') {
+          if(active.length&&!first.force)socket.end(JSON.stringify({error:'Active DSH tasks are running. Finish them first, or use stop --force to interrupt them.'})+'\n');
+          else socket.end('{"stopping":true}\n',()=>{stop().catch(console.error);});
+        } else socket.end('{"error":"Unknown bridge control action"}\n');
+        return;
+      }
+      const input=new PassThrough();
+      const server=makeServer(manager);connections.add(server);
+      socket.on('close',()=>{input.end();connections.delete(server);server.close().catch(()=>{});});
+      server.connect(new StdioServerTransport(input,socket)).then(()=>{
+        input.write(buffer);socket.pipe(input);socket.resume();
+      }).catch(e=>{console.error(e);socket.destroy();});
+    };
+    socket.on('data',header);
   });
-  listener.listen(socketPath,()=>{chmodSync(socketPath,0o600);console.error('DSH subagent daemon ready');});
+  await new Promise((resolve,reject)=>{
+    listener.once('error',reject);
+    listener.listen(token?{host:'127.0.0.1',port:0}:socketPath,resolve);
+  }).catch(async error=>{unlinkSync(lockPath);await manager.shutdown();throw error;});
+  if(token)writeJson(join(state,'endpoint.json'),{port:listener.address().port,token});
+  else chmodSync(socketPath,0o600);
+  console.error('DSH subagent daemon ready');
   let stopping=false;
-  async function stop(){if(stopping)return;stopping=true;listener.close();await Promise.allSettled([...connections].map(s=>s.close()));await manager.shutdown();if(existsSync(socketPath))unlinkSync(socketPath);process.exit(0);}
+  async function stop(){if(stopping)return;stopping=true;listener.close();await Promise.allSettled([...connections].map(s=>s.close()));await manager.shutdown();for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);process.exit(0);}
   process.on('SIGTERM',stop);process.on('SIGINT',stop);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e);process.exitCode=1;});

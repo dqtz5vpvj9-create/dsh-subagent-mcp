@@ -50,4 +50,4 @@ These paths passed during development. Tests make real provider calls; they are 
 
 Codex's MCP registration was verified. A separate model-driven smoke test in a fresh standalone Codex CLI failed with an OpenAI authentication error before making its tool call. We therefore distinguish successful MCP-client-to-DSH validation from unverified model-driven use in that standalone Codex environment.
 
-No speed, cost, or coding-accuracy advantage is claimed by these lifecycle tests. macOS and Windows are not supported by the current installer.
+No speed, cost, or coding-accuracy advantage is claimed by these lifecycle tests. That release used the original Linux-only installer. Current cross-platform validation is described above.
