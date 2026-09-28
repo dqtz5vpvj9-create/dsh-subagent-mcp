@@ -122,8 +122,8 @@ def acceptance(host, package, output, run):
                     f'{phase}-child.txt, and report completion. Use workspace-write permission. '
                     'Call dsh_watch once to register the native completion callback, then end your turn with WAITING. '
                     'Do not poll or perform foreground waiting. When dsh_completion arrives automatically, '
-                    f'read {phase}-child.txt, verify its exact content, and write exactly {marker}_VERIFIED into '
-                    f'{phase}-verified.txt. Then reply ACCEPTED. Do not write the child file yourself. '
+                    f'use the shell to read {phase}-child.txt, print its actual contents from disk, and verify its exact content. '
+                    f'On success reply exactly ACCEPTED {marker}. The parent must not write any files. '
                     'Do not read credentials, change installation settings, or contact other sessions.')
                 terminal.send('\x1b[200~'+prompt+'\x1b[201~')
                 # Separate paste and Enter so Codex's paste-burst handling does

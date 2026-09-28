@@ -8,9 +8,11 @@ Both Codex and DeepSeek make real model requests.
 For each host, the workflow installs the candidate and opens Codex. Codex delegates
 a file-writing task through MCP, registers the host listener through `dsh_watch`, and
 yields. The listener delivers native completion tool output. Codex then reads the
-child's file and writes a separate acceptance artifact. The test requires the
-delegation and native callback to appear in the actual parent rollout, as well as
-a pending callback receipt and the expected contents of both files.
+child's file and replies with the verified contents. The test checks the exact
+bytes on disk, the parent's read call and tool output, and its final acceptance
+reply. Delegation and exactly one native callback must appear in the real parent
+rollout, alongside an observed pending callback receipt. This works with a
+read-only parent; the explicitly authorized DSH child writes the artifact.
 It also checks that the parent finishes its waiting turn before the callback and
 finishes its acceptance turn before the terminal is closed. A dropped SSH
 observer reconnects without sending the model prompt again.

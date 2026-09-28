@@ -55,11 +55,10 @@ if(action==='prepare') {
         receipts.push(receipt);
       }
     }
-    const child=join(workspace,phase+'-child.txt'),parent=join(workspace,phase+'-verified.txt');
-    if(receipts.length&&existsSync(child)&&existsSync(parent)) {
+    const child=join(workspace,phase+'-child.txt');
+    if(receipts.length&&existsSync(child)) {
       const receipt=receipts.at(-1),result=read(receipt.result_path);
       assert.equal(readFileSync(child,'utf8'),marker);
-      assert.equal(readFileSync(parent,'utf8'),marker+'_VERIFIED');
       assert.equal(receipt.delivery,'tool-output');assert.equal(result.status,'completed');
       const path=sessionFile(join(homedir(),'.codex/sessions'),receipt.thread_id);
       if(!path){await delay(1000);continue;}
@@ -68,10 +67,14 @@ if(action==='prepare') {
       const delegated=calls.some(x=>JSON.stringify(x.payload).includes(phase==='first'?'dsh_start':'dsh_followup'));
       const registered=calls.filter(x=>/dsh_watch$/.test(x.payload.name)||/[A-Za-z_]*dsh_watch\s*\(/.test(x.payload.input??x.payload.arguments??''));
       const delivered=items.filter(x=>x.type==='response_item'&&x.payload?.type==='function_call_output'&&x.payload.name==='dsh_completion');
-      const accepted=items.some(x=>x.type==='event_msg'&&x.payload?.type==='task_complete'&&x.payload.last_agent_message?.includes('ACCEPTED'));
+      const accepted=items.some(x=>x.type==='event_msg'&&x.payload?.type==='task_complete'&&x.payload.last_agent_message?.trim()==='ACCEPTED '+marker);
       if(!accepted){await delay(1000);continue;}
       const waiting=items.findIndex(x=>x.type==='event_msg'&&x.payload?.type==='task_complete'&&x.payload.last_agent_message?.includes('WAITING'));
       const completion=items.findIndex(x=>x.type==='response_item'&&x.payload?.name==='dsh_completion');
+      const afterCompletion=items.slice(completion+1).filter(x=>x.type==='response_item');
+      const readCall=afterCompletion.some(x=>['function_call','custom_tool_call'].includes(x.payload?.type)&&JSON.stringify(x.payload).includes(phase+'-child.txt'));
+      const readOutput=afterCompletion.some(x=>['function_call_output','custom_tool_call_output'].includes(x.payload?.type)&&JSON.stringify(x.payload.output).includes(marker));
+      assert.ok(readCall&&readOutput,'The awakened parent must read the artifact and receive its actual contents through a tool.');
       assert.ok(waiting>=0&&waiting<completion,'The parent must finish its waiting turn before native completion arrives.');
       assert.ok(delegated,'The real Codex parent must delegate through MCP.');
       assert.equal(registered.length,1,'The real Codex parent must register exactly one MCP callback.');
@@ -79,7 +82,8 @@ if(action==='prepare') {
       assert.ok(watching,'The test must observe a registered pending callback.');
       const report={ok:true,phase,host:process.env.COMPUTERNAME,node:process.version,version:record().version,backend:record().backend,
         agentId:receipt.agent_id,threadId:receipt.thread_id,callback:receipt.status,nativeCallbackItems:delivered.length,
-        delegated,mcpCallbackRegistrations:registered.length,childArtifactVerified:true,parentArtifactVerified:true,observedPendingCallback:watching,parentIdleBeforeCallback:true,parentTurnCompleted:accepted};
+        delegated,mcpCallbackRegistrations:registered.length,childArtifactVerified:true,parentReadArtifact:true,parentReadOutputVerified:true,
+        observedPendingCallback:watching,parentIdleBeforeCallback:true,parentTurnCompleted:accepted};
       writeFileSync(join(root,phase+'.json'),JSON.stringify(report,null,2));
       console.log(JSON.stringify(report));process.exit(0);
     }
