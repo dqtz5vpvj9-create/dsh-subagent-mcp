@@ -62,6 +62,7 @@ if(action==='prepare') {
       const items=readFileSync(path,'utf8').trim().split(/\r?\n/).map(JSON.parse);
       const calls=items.filter(x=>x.type==='response_item'&&['function_call','custom_tool_call'].includes(x.payload?.type));
       const delegated=calls.some(x=>JSON.stringify(x.payload).includes(phase==='first'?'dsh_start':'dsh_followup'));
+      const registered=calls.filter(x=>/dsh_watch$/.test(x.payload.name)||/[A-Za-z_]*dsh_watch\s*\(/.test(x.payload.input??x.payload.arguments??''));
       const delivered=items.filter(x=>x.type==='response_item'&&x.payload?.type==='function_call_output'&&x.payload.name==='dsh_completion');
       const accepted=items.some(x=>x.type==='event_msg'&&x.payload?.type==='task_complete'&&x.payload.last_agent_message?.includes('ACCEPTED'));
       if(!accepted){await delay(1000);continue;}
@@ -69,11 +70,12 @@ if(action==='prepare') {
       const completion=items.findIndex(x=>x.type==='response_item'&&x.payload?.name==='dsh_completion');
       assert.ok(waiting>=0&&waiting<completion,'The parent must finish its waiting turn before native completion arrives.');
       assert.ok(delegated,'The real Codex parent must delegate through MCP.');
-      assert.ok(delivered.length,'The real Codex rollout must contain native completion tool output.');
+      assert.equal(registered.length,1,'The real Codex parent must register exactly one MCP callback.');
+      assert.equal(delivered.length,1,'The real Codex rollout must contain exactly one native completion tool output.');
       assert.ok(watching,'The test must observe a registered pending callback.');
       const report={ok:true,phase,host:process.env.COMPUTERNAME,node:process.version,version:record().version,backend:record().backend,
         agentId:receipt.agent_id,threadId:receipt.thread_id,callback:receipt.status,nativeCallbackItems:delivered.length,
-        delegated,childArtifactVerified:true,parentArtifactVerified:true,observedPendingCallback:watching,parentIdleBeforeCallback:true,parentTurnCompleted:accepted};
+        delegated,mcpCallbackRegistrations:registered.length,childArtifactVerified:true,parentArtifactVerified:true,observedPendingCallback:watching,parentIdleBeforeCallback:true,parentTurnCompleted:accepted};
       writeFileSync(join(root,phase+'.json'),JSON.stringify(report,null,2));
       console.log(JSON.stringify(report));process.exit(0);
     }

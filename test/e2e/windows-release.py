@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tarfile
 import time
 import uuid
 import pexpect
@@ -42,6 +43,8 @@ def acceptance(host, package, output, run):
     report = {'host': host, 'run': run, 'ok': False, 'phases': []}
     terminal = None
     try:
+        with tarfile.open(package) as archive:
+            expected_version=json.load(archive.extractfile('package/package.json'))['version']
         upload(host, package, f'dsh-e2e-candidate-{run}.tgz')
         upload(host, ROOT/'test/e2e/windows-state.mjs', 'dsh-e2e-state.mjs')
         upload(host, ROOT/'test/e2e/windows-launch.ps1', 'dsh-e2e-launch.ps1')
@@ -118,6 +121,8 @@ def acceptance(host, package, output, run):
                             terminal.send('\r')
                             report.setdefault('oneTimeApprovals',[]).append({'phase':phase,'tool':name})
                     phase_report=json.loads(future.result())
+                    if phase_report['version'] != expected_version:
+                        raise RuntimeError('The running installation did not match the candidate version.')
                 report['phases'].append(phase_report)
                 agent=phase_report['agentId']
                 terminal.sendcontrol('c');time.sleep(.5);terminal.sendcontrol('c')
