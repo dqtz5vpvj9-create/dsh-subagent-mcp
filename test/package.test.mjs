@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, writeFileSync, mkdirSync, readFileSync, realpathSync, rmSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {execFileSync, spawnSync} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
 import {projectRoot} from '../src/config.mjs';
 import {runCommand} from '../src/commands.mjs';
 import {temporaryDirectory} from '../src/platform.mjs';
@@ -60,14 +60,8 @@ else process.exit(3);
     installed = join(record.root, 'src/cli.mjs');
     if (service === 'background') assert.equal(record.backend, 'background');
     console.log('Validated service backend:', record.backend, 'on', process.platform);
-    if (nativeServiceConflict(record, {config: join(config, 'installation.json')})) {
-      if (record.backend === 'task-scheduler') {
-        const query = spawnSync('schtasks.exe', ['/Query', '/TN', 'com.deepseek.dsh-subagent-mcp', '/XML']);
-        console.error('Task query bytes:', query.stdout.subarray(0, 40).toString('hex'));
-        console.error('Task query:', query.stdout.toString('utf8'));
-      }
-      assert.fail('The service must recognize its own configuration after registration.');
-    }
+    assert.equal(nativeServiceConflict(record, {config: join(config, 'installation.json')}), false,
+      'The service must recognize its own configuration after registration.');
     assert.ok(record.root.startsWith(join(env.DSH_SUBAGENT_DATA, 'versions')));
     assert.equal(realpathSync(join(env.CODEX_HOME, 'skills/dsh-subagent')), realpathSync(join(record.root, 'skills/dsh-subagent')));
     assert.ok(!readFileSync(join(config, 'installation.json'), 'utf8').includes('fixture-private-key'));

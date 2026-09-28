@@ -73,7 +73,16 @@ export async function setup(argv, {source = false, launching = false} = {}) {
     (!candidateUnit.includes('DSH_SUBAGENT_STATE=') && paths.state === join(homedir(), '.local/state/dsh-subagent-mcp'))) ? candidateUnit : null;
   const legacyRunning = !previous && process.platform === 'linux' && existsSync(join(paths.state, 'server.sock'));
   const legacyEnabled = legacyUnit && spawnSync('systemctl', ['--user', 'is-enabled', 'dsh-subagent-mcp.service'], {stdio: 'ignore'}).status === 0;
-  if (!legacyUnit && nativeServiceConflict({backend})) {
+  let conflict = false;
+  if (!legacyUnit) {
+    try {conflict = nativeServiceConflict({backend});}
+    catch (error) {
+      if (args.service && args.service !== 'auto') throw error;
+      console.warn(error.message + '\nUsing a separate background process.');
+      backend = 'background';
+    }
+  }
+  if (conflict) {
     if (args.service && args.service !== 'auto') throw new Error('Another installation owns the login service. Use --service background for this configuration.');
     console.warn('Another installation owns the login service. Using a separate background process.');
     backend = 'background';

@@ -1,6 +1,7 @@
 import {existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, openSync, closeSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {spawn, spawnSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {installation, installationFile, locations, privateDirectory} from './platform.mjs';
@@ -50,9 +51,14 @@ export function nativeServiceConflict(record, {home = homedir(), config = instal
   if (record.backend === 'background') return false;
   let text;
   if (record.backend === 'task-scheduler') {
-    const result = spawnSync('schtasks.exe', ['/Query', '/TN', label, '/XML'], {windowsHide: true});
-    if (result.status !== 0) return false;
-    text = result.stdout.toString(result.stdout[1] === 0 || result.stdout[0] === 255 ? 'utf16le' : 'utf8');
+    // Use the Windows-bundled PowerShell 5.1 and Task Scheduler API: schtasks
+    // output can use a console code page even when its XML declares UTF-16.
+    const script = fileURLToPath(new URL('../scripts/read-windows-task.ps1', import.meta.url));
+    const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script, '-TaskName', label],
+      {windowsHide: true, encoding: 'utf8'});
+    if (result.status === 3) return false;
+    if (result.error || result.status !== 0) throw new Error('Cannot inspect the login service: ' + (result.error?.message || result.stderr.trim()));
+    text = result.stdout;
   } else {
     const path = record.backend === 'systemd' ? join(home, '.config/systemd/user', unit)
       : join(home, 'Library/LaunchAgents', label + '.plist');
