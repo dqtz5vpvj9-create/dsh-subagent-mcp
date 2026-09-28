@@ -14,7 +14,8 @@ import uuid
 import pexpect
 
 ROOT = Path(__file__).resolve().parents[2]
-SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-o', 'LogLevel=ERROR']
+SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-o', 'LogLevel=ERROR',
+       '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4']
 
 def remote(host, *args, timeout=180):
     command = subprocess.list2cmdline(list(args))
@@ -23,6 +24,19 @@ def remote(host, *args, timeout=180):
 
 def upload(host, source, target):
     subprocess.run(['scp', '-q', str(source), f'{host}:{target}'], check=True, timeout=120)
+
+def observe(host, run, phase, agent):
+    # Reconnect the read-only observer after a transport failure. Never replay
+    # the Codex prompt or the DSH task. The host retains the original deadline
+    # and pending-callback observation across observer connections.
+    for attempt in range(3):
+        try:
+            return remote(host,'node','dsh-e2e-state.mjs','wait',run,phase,
+                          *([agent] if agent else []),timeout=630)
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 255 or attempt == 2:
+                raise RuntimeError(f'{host} observer failed: {error.stderr.strip()}') from error
+            print(f'{host}: reconnecting the read-only SSH observer',flush=True)
 
 def acceptance(host, package, output, run):
     report = {'host': host, 'run': run, 'ok': False, 'phases': []}
@@ -53,6 +67,13 @@ def acceptance(host, package, output, run):
                         # Wait for the remote thread to load; its initial composer
                         # is visible before the model/session footer is ready.
                         terminal.expect(r'GPT-6-Astra',timeout=120)
+                        # Windows can show the composer before thread settings
+                        # finish loading. Drain that startup animation first.
+                        until=time.monotonic()+5
+                        while time.monotonic()<until:
+                            event=terminal.expect(['\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=1)
+                            if event==0:terminal.send('\x1b[1;1R')
+                            elif event==1:raise RuntimeError('Codex exited during thread initialization.')
                         ready=True;break
                     if found==1: terminal.send('1\r')
                     elif found==2: terminal.send('y\r')
@@ -74,8 +95,15 @@ def acceptance(host, package, output, run):
                 # not absorb the submission key into the pasted message.
                 time.sleep(1)
                 terminal.send('\r')
+                # Some Windows terminals consume the first Enter while ending
+                # bracketed paste. Confirm the task starts before observing it.
+                started=terminal.expect([r'Working',r'esc to interrupt',r'Calling',pexpect.EOF,pexpect.TIMEOUT],timeout=10)
+                if started==4:
+                    terminal.send('\r')
+                    started=terminal.expect([r'Working',r'esc to interrupt',r'Calling',pexpect.EOF],timeout=60)
+                if started==3:raise RuntimeError('Codex exited before accepting the task.')
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future=pool.submit(remote,host,'node','dsh-e2e-state.mjs','wait',run,phase,*([agent] if agent else []),timeout=630)
+                    future=pool.submit(observe,host,run,phase,agent)
                     while not future.done():
                         found=terminal.expect(['\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=2)
                         if found==0:terminal.send('\x1b[1;1R')
@@ -96,6 +124,9 @@ def acceptance(host, package, output, run):
     finally:
         if terminal is not None and terminal.isalive():
             terminal.sendcontrol('c');time.sleep(.5);terminal.sendcontrol('c');terminal.close(force=True)
+        if not report['ok']:
+            try: report['cleanup']=json.loads(remote(host,'node','dsh-e2e-state.mjs','cleanup',run))
+            except Exception as error: report['cleanupError']=str(error)
         (output/f'{host}.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
 
