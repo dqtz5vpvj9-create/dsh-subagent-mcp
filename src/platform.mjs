@@ -27,6 +27,13 @@ export function privateDirectory(path) {
   return path;
 }
 
+// Installed npm code is public. Sandbox accounts need read/execute access to
+// its skill and runtime; credentials, history and IPC tokens stay private.
+export function readableProgramDirectory(path) {
+  if (process.platform === 'win32') execFileSync('icacls.exe', [path, '/grant:r', '*S-1-5-32-545:(OI)(CI)RX'], {stdio: 'pipe', windowsHide: true});
+  return path;
+}
+
 export function readJson(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return fallback; throw error; }

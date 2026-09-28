@@ -5,7 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {projectRoot, resolveDshCli} from './config.mjs';
-import {locations, installation, installationFile, privateDirectory, writeJson, readJson} from './platform.mjs';
+import {locations, installation, installationFile, privateDirectory, readableProgramDirectory, writeJson, readJson} from './platform.mjs';
 import {commandSpec, packageEntry, runCommand} from './commands.mjs';
 import {installPackage} from './install-package.mjs';
 import {backendDefault, installService, startService, stopService, statusService, removeService, systemdQuote, nativeServiceConflict} from './service.mjs';
@@ -134,6 +134,7 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   console.log('Preparing the DSH profile…');
   runCommand([process.execPath, dependencies.dsh], ['--profile', 'codex-subagent', ...(existsSync(profile) ? [] : ['--from-default-profile', 'sdk']), '--dump-config'], {stdio: ['ignore', 'ignore', 'pipe']});
   const root = source ? projectRoot : installPackage(projectRoot, join(paths.data, 'versions', version() + '-' + randomUUID().slice(0, 8)));
+  if (!source) readableProgramDirectory(root);
   const env = Object.fromEntries(['PATH', 'DSH_HOME', 'TMPDIR', 'CODEX_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME', 'DSH_SUBAGENT_CONFIG', 'DSH_SUBAGENT_DATA'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
   const record = {version: version(), root, node: process.execPath, ...dependencies, backend, state: paths.state, env, skill: !args['no-skill']};
   console.log('Connecting the background service and Codex…');

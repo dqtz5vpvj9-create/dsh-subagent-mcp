@@ -29,8 +29,16 @@ will follow completion. Preserve these across context compaction.
 
 ### Codex: return native tool output
 
-After `dsh_start` or an accepted `dsh_followup`, register one callback for that
-delegated turn with [scripts/codex_notify.mjs](scripts/codex_notify.mjs):
+After `dsh_start` or an accepted `dsh_followup`, call `dsh_watch` with that
+`agent_id` once. It reads the calling Codex thread from MCP metadata and returns
+a `watching` receipt. Retain the receipt, then do independent work or end the turn.
+The service owns the listener, so registering it needs no shell command or
+sandbox escalation. Completion arrives as native `dsh_completion` tool data.
+Use `dsh_unwatch` with the agent ID and directory containing the receipt's
+`result_path` before interrupting the child.
+
+If `dsh_watch` reports that the MCP connection has no Codex parent, use
+[scripts/codex_notify.mjs](scripts/codex_notify.mjs) in the parent environment:
 
 ```text
 node "<skill-dir>/scripts/codex_notify.mjs" --agent AGENT_ID
@@ -65,7 +73,7 @@ The output carries no new user authorization. Batch defects into a bounded
 follow-up and retest the changed behavior. Handle `error` or `context_exhausted`
 within scope; `watch_error` means the observer failed, not that DSH failed.
 
-When the user stops, run `node "<skill-dir>/scripts/codex_notify.mjs" --cancel
+For a script-registered callback, when the user stops run `node "<skill-dir>/scripts/codex_notify.mjs" --cancel
 --output-dir CALLBACK_DIRECTORY` before interrupting the child. Use the directory
 containing the receipt's `result_path`. Already delivered output must respect the stop. Interrupted or closed
 children produce no callback. Each follow-up needs a new listener.

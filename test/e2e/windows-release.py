@@ -85,7 +85,7 @@ def acceptance(host, package, output, run):
                 prompt=(f'Release acceptance {run}. Work only in the current directory. Read the installed $dsh-subagent skill. '
                     f'{delegation}, with task: use the shell tool to wait 40 seconds, then write exactly {marker} into '
                     f'{phase}-child.txt, and report completion. Use workspace-write permission. '
-                    'Register the packaged Node completion callback once, then end your turn with WAITING. '
+                    'Call dsh_watch once to register the native completion callback, then end your turn with WAITING. '
                     'Do not poll or perform foreground waiting. When dsh_completion arrives automatically, '
                     f'read {phase}-child.txt, verify its exact content, and write exactly {marker}_VERIFIED into '
                     f'{phase}-verified.txt. Then reply ACCEPTED. Do not write the child file yourself. '

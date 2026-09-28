@@ -7,7 +7,7 @@ import {randomBytes} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import WebSocket from 'ws';
 import {commandSpec, runCommand} from './commands.mjs';
-import {installation, locations, privateDirectory, writeJson} from './platform.mjs';
+import {installation, locations, privateDirectory, writeJson, temporaryDirectory} from './platform.mjs';
 import {connectHostedCodex, stopProcessTree} from './codex-host.mjs';
 
 export async function launchCodex(args) {
@@ -32,7 +32,7 @@ export async function launchCodex(args) {
   const token = randomBytes(32).toString('hex'), tokenFile = join(directory, 'token');
   writeFileSync(tokenFile, token + '\n', {mode: 0o600});
   const connectionFile = join(directory, 'connection.json');
-  writeJson(connectionFile, {endpoint, token});
+  writeJson(connectionFile, {endpoint, token, temporaryDirectory: temporaryDirectory()});
   const env = {...process.env, DSH_CODEX_REMOTE: endpoint, DSH_CODEX_TOKEN: token, DSH_CODEX_CONNECTION: connectionFile};
   const [file, ...prefix] = spec;
   let server, client;
@@ -44,7 +44,7 @@ export async function launchCodex(args) {
       server = await connectHostedCodex({directory, cwd: process.cwd(), env});
     } else {
       const log = openSync(join(directory, 'app-server.log'), 'a', 0o600);
-      const child = spawn(file, [...prefix, 'app-server', '--listen', endpoint, '--ws-auth', 'capability-token', '--ws-token-file', tokenFile],
+      const child = spawn(file, [...prefix, 'app-server', '--config', 'mcp_servers.dsh_subagent.env_vars=["DSH_CODEX_CONNECTION"]', '--listen', endpoint, '--ws-auth', 'capability-token', '--ws-token-file', tokenFile],
         {env, windowsHide: true, stdio: ['ignore', log, log]});
       closeSync(log);
       const done = new Promise(resolve => {child.once('exit', resolve); child.once('error', resolve);});

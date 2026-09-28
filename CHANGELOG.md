@@ -2,6 +2,8 @@
 
 ## 0.6.2
 
+- Register and cancel completion callbacks directly through `dsh_watch` and `dsh_unwatch`, using Codex's MCP thread metadata. Sandboxed parents no longer need to execute a host callback script or access its private credentials.
+- Give Windows sandbox users read access to the published program files while retaining private permissions for credentials, history and callback connections.
 - Run the Codex App Server for Windows SSH terminals through the existing login service. This keeps Codex's sandbox in the logged-in Windows session and closes the owned process tree when the terminal disconnects.
 - Resolve both local `node_modules/.bin` and global npm wrappers on Windows to the package's JavaScript entrypoint. Existing DSH installations no longer cause Node to execute a shell script during setup.
 - Prepare a private, compatible Codex installation when the existing CLI predates the authenticated callback launcher. Existing global installations remain available.

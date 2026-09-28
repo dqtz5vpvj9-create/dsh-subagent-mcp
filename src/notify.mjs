@@ -91,12 +91,20 @@ export async function notify(argv = process.argv.slice(2)) {
     await watchCompletion(args, receipt => {process.send?.(receipt); process.disconnect?.();});
     return;
   }
-  const directory = resolve(args['output-dir'] || mkdtempSync(join(temporaryDirectory(), 'dsh-callback-')));
+  const receipt = await registerCallback(args);
+  console.log(JSON.stringify(receipt));
+  if (receipt.status !== 'watching') process.exitCode = 1;
+}
+
+export async function registerCallback(args, {env = process.env, temp = temporaryDirectory()} = {}) {
+  const directory = resolve(args['output-dir'] || mkdtempSync(join(temp, 'dsh-callback-')));
   privateDirectory(directory);
   writeFileSync(join(directory, 'callback.json'), JSON.stringify({status: 'starting', agent_id: args.agent, thread_id: args.thread}), {flag: 'wx', mode: 0o600});
   const log = openSync(join(directory, 'callback.log'), 'a', 0o600);
-  const child = fork(fileURLToPath(import.meta.url), [...argv, '--thread', args.thread, '--output-dir', directory, '--foreground'],
-    {detached: true, windowsHide: true, stdio: ['ignore', log, log, 'ipc']});
+  const argv = Object.entries({...args, 'output-dir': directory}).filter(([,value]) => value !== undefined && value !== false)
+    .flatMap(([key,value]) => value === true ? ['--' + key] : ['--' + key, String(value)]);
+  const child = fork(fileURLToPath(import.meta.url), [...argv, '--foreground'],
+    {env, detached: true, windowsHide: true, stdio: ['ignore', log, log, 'ipc']});
   closeSync(log);
   const receipt = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {child.kill(); reject(new Error('Callback listener did not initialize; inspect ' + join(directory, 'callback.log')));}, 35000);
@@ -105,8 +113,7 @@ export async function notify(argv = process.argv.slice(2)) {
     child.once('exit', code => {clearTimeout(timer); reject(new Error('Callback listener exited before registration (' + code + ')'));});
   });
   child.unref();
-  console.log(JSON.stringify(receipt));
-  if (receipt.status !== 'watching') process.exitCode = 1;
+  return receipt;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) notify().catch(error => {console.error(error.message); process.exitCode = 1;});

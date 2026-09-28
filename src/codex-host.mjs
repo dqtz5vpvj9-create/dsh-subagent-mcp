@@ -22,7 +22,7 @@ export async function hostCodex(socket, request, record) {
   if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1') throw new Error('Codex must listen on authenticated loopback.');
   const [file, ...prefix] = record.codex;
   const log = openSync(join(directory, 'app-server.log'), 'a', 0o600);
-  const child = spawn(file, [...prefix, 'app-server', '--listen', connection.endpoint,
+  const child = spawn(file, [...prefix, 'app-server', '--config', 'mcp_servers.dsh_subagent.env_vars=["DSH_CODEX_CONNECTION"]', '--listen', connection.endpoint,
     '--ws-auth', 'capability-token', '--ws-token-file', join(directory, 'token')],
     {cwd: request.cwd, env: request.env, windowsHide: true, stdio: ['ignore', log, log]});
   closeSync(log);

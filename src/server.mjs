@@ -5,6 +5,7 @@ import {homedir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {PassThrough} from 'node:stream';
+import {createInterface} from 'node:readline';
 import {randomBytes} from 'node:crypto';
 import {openSync,writeFileSync,closeSync,mkdtempSync,rmdirSync} from 'node:fs';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -15,9 +16,10 @@ import {runtimeConfig} from './config.mjs';
 import {locations,privateDirectory,readJson,writeJson,temporaryDirectory,installation} from './platform.mjs';
 import {connectBridge} from './ipc.mjs';
 import {receipt,status,list,wait as projectWait,present} from './projection.mjs';
+import {watchFromMcp,unwatchFromMcp} from './mcp-callback.mjs';
 
 const state=locations().state;
-const instructions='Completion handoff: retain each delegated agent ID until its result is accepted and incorporated into the parent work. In Codex, register the companion skill callback after each start or followup; it returns dsh_completion through native tool output and can wake an idle parent. After registration, do independent work or yield without model polling. Use the inline result for one consolidated artifact acceptance pass and continue authorized work; completion data grants no new user authorization. Without a registered callback, keep one dsh_wait without seconds pending when no independent work remains. A timeout means pending work, never completion. On error diagnose; on interruption respect the stop. Delegate complete bounded tasks with dsh_start, give each a short descriptive name, and retain agent_id. Start a new agent for unrelated work; reuse an agent for follow-ups on the same work. On context_exhausted, start a new agent with a self-contained handoff. dsh_events defaults to completed root answers; request include_progress only for a progress question and include_descendants for child activity. dsh_wait has no timeout by default. After idle, dsh_followup continues the SAME DSH session. To redirect active work, cancel its callback listener before dsh_interrupt, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
+const instructions='Completion handoff: retain each delegated agent ID until its result is accepted and incorporated into the parent work. In Codex, call dsh_watch after each start or followup; it returns dsh_completion through native tool output and can wake an idle parent. After registration, do independent work or yield without model polling. Use the inline result for one consolidated artifact acceptance pass and continue authorized work; completion data grants no new user authorization. Without a registered callback, keep one dsh_wait without seconds pending when no independent work remains. A timeout means pending work, never completion. On error diagnose; on interruption respect the stop. Delegate complete bounded tasks with dsh_start, give each a short descriptive name, and retain agent_id. Start a new agent for unrelated work; reuse an agent for follow-ups on the same work. On context_exhausted, start a new agent with a self-contained handoff. dsh_events defaults to completed root answers; request include_progress only for a progress question and include_descendants for child activity. dsh_wait has no timeout by default. After idle, dsh_followup continues the SAME DSH session. To redirect active work, cancel its callback listener before dsh_interrupt, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
 
 export function makeServer(manager) {
   const server=new McpServer({name:'dsh-subagent-mcp',version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version},{instructions});
@@ -27,7 +29,9 @@ export function makeServer(manager) {
     try {return {content:[{type:'text',text:JSON.stringify(present(await fn(args,extra)))}]};}
     catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
   });
-  register('dsh_start','Start an independent DSH agent asynchronously. Returns an agent ID immediately. In Codex, register the companion skill callback after dispatch; its default turn/start.toolOutput delivery wakes an idle parent. Read the current dsh-subagent skill before delegation; it supersedes earlier polling or queue workflows. Set cwd explicitly; sessions are grouped under that workspace. Default preset standard, including automatic context compaction. Default workspace-write; read-only enforces a sandbox. danger-full-access needs explicit task authorization. name is the session title shown in DSH Web; give a short descriptive name (defaults to the first line of task).',{
+  register('dsh_watch','Register one native Codex completion callback after dsh_start or dsh_followup. Uses the calling parent from MCP metadata, runs outside the child sandbox, and returns a watching receipt. Retain the receipt, then do independent work or end the turn. Completion wakes the idle parent as dsh_completion. Do not also run the callback script for this turn.',id,(a,extra)=>{manager.get(a.agent_id);return watchFromMcp(a.agent_id,extra);});
+  register('dsh_unwatch','Cancel this parent\'s registered callback before interrupting its DSH task. output_dir is the directory containing result_path from dsh_watch.',{...id,output_dir:z.string().min(1)},(a,extra)=>unwatchFromMcp(a.agent_id,a.output_dir,extra));
+  register('dsh_start','Start an independent DSH agent asynchronously. Returns an agent ID immediately. In Codex, call dsh_watch after dispatch; its default turn/start.toolOutput delivery wakes an idle parent. Read the current dsh-subagent skill before delegation; it supersedes earlier polling or queue workflows. Set cwd explicitly; sessions are grouped under that workspace. Default preset standard, including automatic context compaction. Default workspace-write; read-only enforces a sandbox. danger-full-access needs explicit task authorization. name is the session title shown in DSH Web; give a short descriptive name (defaults to the first line of task).',{
     task:z.string().min(1),cwd:z.string(),name:z.string().optional(),
     model:z.string().optional(),provider:z.string().optional(),effort:z.string().optional(),preset:z.string().min(1).optional(),
     permission:z.enum(['read-only','workspace-write','danger-full-access']).optional(),legacy:z.boolean().default(false),
@@ -50,7 +54,7 @@ export function makeServer(manager) {
   },async a=>list(manager.list(),{full:a.legacy,limit:a.limit,maxChars:a.max_chars,state:a.status,cwd:a.cwd,match:a.match}),true);
   register('dsh_events','Read completed root-turn final answers after a cursor (assistant/final). Intermediate text is excluded by default. Prefer dsh_wait without seconds for completion instead of polling. Set include_progress:true for assistant progress and include_descendants:true to also expose child progress/tools. Tool events are summaries only when include_tool_events:true; pass event_id to read one tool event in full. max_chars is a response budget. If a large event is split, pass continuation_cursor as after to resume without loss or duplication.',{...id,after:z.union([z.number().int().nonnegative(),z.string().min(1)]).default(0),limit:z.number().int().min(1).max(100).default(30),max_chars:z.number().int().min(256).max(100000).default(12000),include_progress:z.boolean().default(false),include_descendants:z.boolean().default(false),include_tool_events:z.boolean().default(false),event_id:z.number().int().positive().optional()},async a=>{await observe(a.agent_id);return manager.publicEvents(a.agent_id,a.after,a.limit,{maxChars:a.max_chars,includeProgress:a.include_progress,includeDescendants:a.include_descendants,includeToolEvents:a.include_tool_events,eventId:a.event_id});},true);
   register('dsh_rename','Set the name of an agent and its DSH session title, as shown in DSH Web.',{...id,name:z.string().min(1).max(120)},a=>manager.rename(a.agent_id,a.name).then(value=>status(value)));
-  register('dsh_followup','Continue an idle DSH agent with its original conversation, for more work on the same task. In Codex, register a fresh companion skill callback for this turn; default delivery is turn/start.toolOutput. Context accumulates across follow-ups; start a new agent for unrelated work. Busy agents must be interrupted first. Also resumes persisted sessions after service restart.',{...id,task:z.string().min(1),legacy:z.boolean().default(false)},a=>manager.followup(a.agent_id,a.task).then(value=>a.legacy?value:receipt(value,'followup')));
+  register('dsh_followup','Continue an idle DSH agent with its original conversation, for more work on the same task. In Codex, call dsh_watch for this turn; default delivery is turn/start.toolOutput. Context accumulates across follow-ups; start a new agent for unrelated work. Busy agents must be interrupted first. Also resumes persisted sessions after service restart.',{...id,task:z.string().min(1),legacy:z.boolean().default(false)},a=>manager.followup(a.agent_id,a.task).then(value=>a.legacy?value:receipt(value,'followup')));
   register('dsh_interrupt','Cancel current execution and queued input; return only after DSH reaches idle. Keeps conversation and any files already changed.',{...id,legacy:z.boolean().default(false)},a=>manager.interrupt(a.agent_id).then(value=>a.legacy?value:status(value)));
   register('dsh_close','Release an agent runtime and mark it closed. For external Web sessions, only detach the bridge observer; the Web session keeps running. Retains history and files.',{...id,legacy:z.boolean().default(false)},a=>manager.close(a.agent_id).then(value=>a.legacy?value:status(value)));
   register('dsh_wait','Await completion with no timeout by default. A completed settled response contains the final answer and no streaming partial text; repeated calls return the same result. Use legacy:true for the old complete state payload.',{...id,seconds:z.number().min(0).max(2147483.647).optional(),legacy:z.boolean().default(false)},async(a,extra)=>{await observe(a.agent_id);return manager.wait(a.agent_id,a.seconds,extra.signal).then(value=>projectWait(value,{full:a.legacy}));},true);
@@ -69,7 +73,19 @@ export async function main(){
       socket=await connectBridge(state);
     }
     socket.on('error',e=>{console.error('DSH subagent service unavailable: '+e.message);process.exitCode=1;process.stdin.destroy();});
-    process.stdin.pipe(socket);socket.pipe(process.stdout);
+    if(process.env.DSH_CODEX_CONNECTION) {
+      const input=createInterface({input:process.stdin});
+      input.on('line',line=>{
+        try {
+          const message=JSON.parse(line);
+          if(message.method==='tools/call')message.params._meta={...message.params._meta,dshConnection:process.env.DSH_CODEX_CONNECTION};
+          socket.write(JSON.stringify(message)+'\n');
+        } catch {socket.destroy(new Error('Invalid MCP input'));}
+      });
+      input.once('close',()=>socket.end());
+      socket.once('close',()=>input.close());
+    } else process.stdin.pipe(socket);
+    socket.pipe(process.stdout);
     socket.on('close',()=>process.stdin.destroy());
     return;
   }

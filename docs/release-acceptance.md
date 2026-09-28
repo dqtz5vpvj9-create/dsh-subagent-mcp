@@ -6,7 +6,7 @@ gate. It runs the packed candidate through npm in a real Windows terminal on bot
 Both Codex and DeepSeek make real model requests.
 
 For each host, the workflow installs the candidate and opens Codex. Codex delegates
-a file-writing task through MCP, registers the packaged completion listener, and
+a file-writing task through MCP, registers the host listener through `dsh_watch`, and
 yields. The listener delivers native completion tool output. Codex then reads the
 child's file and writes a separate acceptance artifact. The test requires the
 delegation and native callback to appear in the actual parent rollout, as well as
