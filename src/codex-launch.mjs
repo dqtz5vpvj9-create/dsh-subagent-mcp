@@ -8,6 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import WebSocket from 'ws';
 import {commandSpec, runCommand} from './commands.mjs';
 import {installation, locations, privateDirectory, writeJson} from './platform.mjs';
+import {connectHostedCodex, stopProcessTree} from './codex-host.mjs';
 
 export async function launchCodex(args) {
   const passthrough = ['login', 'logout', 'doctor', '--version', '-V', '--help', '-h'].includes(args[0]);
@@ -33,19 +34,25 @@ export async function launchCodex(args) {
   const connectionFile = join(directory, 'connection.json');
   writeJson(connectionFile, {endpoint, token});
   const env = {...process.env, DSH_CODEX_REMOTE: endpoint, DSH_CODEX_TOKEN: token, DSH_CODEX_CONNECTION: connectionFile};
-  const log = openSync(join(directory, 'app-server.log'), 'a', 0o600);
   const [file, ...prefix] = spec;
-  const server = spawn(file, [...prefix, 'app-server', '--listen', endpoint, '--ws-auth', 'capability-token', '--ws-token-file', tokenFile],
-    {env, windowsHide: true, stdio: ['ignore', log, log]});
-  closeSync(log);
-  const serverExit = new Promise(resolve => {server.once('exit', resolve); server.once('error', resolve);});
-  let client;
-  const stop = () => {client?.kill('SIGTERM'); server.kill('SIGTERM');};
+  let server, client;
+  const stop = () => {if(client)stopProcessTree(client); server?.stop();};
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
-    await new Promise((resolve, reject) => {server.once('spawn', resolve); server.once('error', reject);});
+    if (process.platform === 'win32' && process.env.SSH_CONNECTION) {
+      await (await import('./service.mjs')).startService();
+      server = await connectHostedCodex({directory, cwd: process.cwd(), env});
+    } else {
+      const log = openSync(join(directory, 'app-server.log'), 'a', 0o600);
+      const child = spawn(file, [...prefix, 'app-server', '--listen', endpoint, '--ws-auth', 'capability-token', '--ws-token-file', tokenFile],
+        {env, windowsHide: true, stdio: ['ignore', log, log]});
+      closeSync(log);
+      const done = new Promise(resolve => {child.once('exit', resolve); child.once('error', resolve);});
+      server = {done, running: () => child.exitCode === null, stop: () => stopProcessTree(child)};
+      await new Promise((resolve, reject) => {child.once('spawn', resolve); child.once('error', reject);});
+    }
     let ready = false;
-    for (let i = 0; i < 100 && server.exitCode === null; i++) {
+    for (let i = 0; i < 100 && server.running(); i++) {
       ready = await new Promise(resolve => {
         const socket = new WebSocket(endpoint, {headers: {Authorization: 'Bearer ' + token}, handshakeTimeout: 1000});
         socket.once('open', () => {socket.close(); resolve(true);});
@@ -56,11 +63,12 @@ export async function launchCodex(args) {
     }
     if (!ready) throw new Error('Codex App Server did not start. Inspect ' + join(directory, 'app-server.log') + '. Update Codex if it does not support authenticated WebSockets.');
     client = spawn(file, [...prefix, '--remote', endpoint, '--remote-auth-token-env', 'DSH_CODEX_TOKEN', ...args], {env, stdio: 'inherit'});
+    server.done.then(() => stopProcessTree(client));
     const [code] = await once(client, 'exit');
     process.exitCode = code || 0;
   } finally {
     process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
-    if (server.exitCode === null) {server.kill('SIGTERM'); await serverExit;}
+    if (server) {server.stop(); await server.done;}
     // Keep diagnostic logs, remove the connection's bearer credentials.
     rmSync(tokenFile, {force: true}); rmSync(connectionFile, {force: true});
   }

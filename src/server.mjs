@@ -12,7 +12,7 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {z} from 'zod';
 import {Manager} from './manager.mjs';
 import {runtimeConfig} from './config.mjs';
-import {locations,privateDirectory,readJson,writeJson,temporaryDirectory} from './platform.mjs';
+import {locations,privateDirectory,readJson,writeJson,temporaryDirectory,installation} from './platform.mjs';
 import {connectBridge} from './ipc.mjs';
 import {receipt,status,list,wait as projectWait,present} from './projection.mjs';
 
@@ -121,7 +121,12 @@ export async function main(){
       let first;try {first=JSON.parse(buffer.subarray(0,end));}catch{socket.destroy();return;}
       if(first.bridge_control) {
         const active=manager.list().filter(a=>!a.external&&['starting','running','interrupting'].includes(a.status));
-        if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
+        if(first.bridge_control==='codex-session') {
+          import('./codex-host.mjs').then(({hostCodex})=>hostCodex(socket,first,installation()))
+            .catch(error=>socket.end(JSON.stringify({error:error.message})+'\n'));
+          socket.resume();
+        }
+        else if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
         else if(first.bridge_control==='stop') {
           if(active.length&&!first.force)socket.end(JSON.stringify({error:'Active DSH tasks are running. Finish them first, or use stop --force to interrupt them.'})+'\n');
           else socket.end('{"stopping":true}\n',()=>{stop().catch(console.error);});
@@ -145,7 +150,7 @@ export async function main(){
   else {chmodSync(socketPath,0o600);if(socketPath!==defaultSocket)writeJson(join(state,'endpoint.json'),{socket:socketPath});}
   console.error('DSH subagent daemon ready');
   let stopping=false;
-  async function stop(){if(stopping)return;stopping=true;listener.close();await Promise.allSettled([...connections].map(s=>s.close()));await manager.shutdown();for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);if(process.platform!=='win32'&&socketPath!==defaultSocket)rmdirSync(dirname(socketPath));process.exit(0);}
+  async function stop(){if(stopping)return;stopping=true;listener.close();await Promise.allSettled([...connections].map(s=>s.close()));await (await import('./codex-host.mjs')).stopHostedCodex();await manager.shutdown();for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);if(process.platform!=='win32'&&socketPath!==defaultSocket)rmdirSync(dirname(socketPath));process.exit(0);}
   process.on('SIGTERM',stop);process.on('SIGINT',stop);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e);process.exitCode=1;});

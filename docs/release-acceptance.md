@@ -11,6 +11,9 @@ yields. The listener delivers native completion tool output. Codex then reads th
 child's file and writes a separate acceptance artifact. The test requires the
 delegation and native callback to appear in the actual parent rollout, as well as
 a pending callback receipt and the expected contents of both files.
+It also checks that the parent finishes its waiting turn before the callback and
+finishes its acceptance turn before the terminal is closed. A dropped SSH
+observer reconnects without sending the model prompt again.
 
 The workflow then closes Codex, restarts the background service, opens Codex again,
 and continues the same DSH agent for another task. Both hosts must pass both rounds.

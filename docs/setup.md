@@ -83,6 +83,10 @@ configuration and login. Use the explicit `codex` subcommand to forward argument
 such as `--cd` and `--model`; it also installs automatically on first use.
 Linux and macOS can use ordinary Codex sessions with their local control socket,
 or use the same launcher. Windows uses the launcher for automatic callbacks.
+When connecting to Windows over SSH, the launcher uses the installed Windows
+login service to host the App Server in the signed-in user's session. This avoids
+Windows sandbox startup failures in OpenSSH's Session 0 without changing Codex's
+sandbox policy. The Windows account must have an active login session.
 
 Automatic callbacks require a Codex App Server with `turn/start.toolOutput`.
 The listener checks the exact parent before registering. If the client lacks

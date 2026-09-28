@@ -11,7 +11,7 @@ export function installPackage(source, prefix) {
   const scratch=mkdtempSync(join(temporaryDirectory(),'dsh-package-'));
   try {
     const [pack]=JSON.parse(runCommand('npm',['pack',source,'--pack-destination',scratch,'--ignore-scripts','--json'],{encoding:'utf8',stdio:'pipe'}));
-    runCommand('npm',['install','--prefix',prefix,'--no-save','--package-lock=false','--ignore-scripts','--omit=dev','--no-audit','--no-fund',join(scratch,pack.filename)]);
+    process.stdout.write(runCommand('npm',['install','--prefix',prefix,'--no-save','--package-lock=false','--ignore-scripts','--omit=dev','--no-audit','--no-fund',join(scratch,pack.filename)],{stdio:'pipe',encoding:'utf8'}));
     return target;
   } finally {rmSync(scratch,{recursive:true,force:true});}
 }

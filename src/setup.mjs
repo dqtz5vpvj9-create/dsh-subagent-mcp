@@ -52,7 +52,7 @@ function ensureDependencies(installMissing) {
     // A private package.json lets subsequent installs retain both dependencies.
     privateDirectory(prefix);
     if (!existsSync(join(prefix, 'package.json'))) writeJson(join(prefix, 'package.json'), {name: 'dsh-subagent-dependencies', private: true});
-    runCommand('npm', ['install', '--prefix', prefix, '--save-exact', '--no-audit', '--no-fund', ...missing]);
+    process.stdout.write(runCommand('npm', ['install', '--prefix', prefix, '--save-exact', '--no-audit', '--no-fund', ...missing], {stdio: 'pipe', encoding: 'utf8'}));
     dsh ||= packageEntry(prefix, '@deepseek-ai/dsh', 'dsh');
     codex ||= [process.execPath, packageEntry(prefix, '@openai/codex', 'codex')];
   }
