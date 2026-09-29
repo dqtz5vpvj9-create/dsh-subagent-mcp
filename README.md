@@ -28,23 +28,24 @@ With [Node.js 24+](https://nodejs.org/) installed:
 npx -y dsh-subagent-mcp@latest
 ```
 
-One command on Windows, Linux and macOS. On first use, it installs missing dependencies, connects the background service and skill, then opens Codex with automatic completion callbacks. Run the same command next time to open Codex directly. Existing accounts and configurations are reused; first-time users can follow the [account setup](docs/setup.md#connect-your-account).
+This installs the integration on Windows, Linux or macOS, then returns to your terminal. It reuses your existing DSH and Codex configuration and installs missing dependencies for your user account. Setup reports any [account configuration](docs/setup.md#connect-your-account) still needed.
 
-In Codex, ask:
+Open your project folder and start Codex as usual:
 
-```text
-Use $dsh-subagent to implement the agreed plan in parallel.
-Have the agents run the relevant tests, then review and integrate their results.
+```sh
+codex
 ```
 
-For a smaller first task:
+If setup installed a separate compatible copy of Codex, use `npx -y dsh-subagent-mcp@latest codex` instead. If Codex was already open during installation, start a fresh Codex session to load the MCP tools and skill.
+
+Try a small task in Codex:
 
 ```text
-Use $dsh-subagent to investigate why cancelled requests leave workers running.
-Keep it read-only and return the root cause with code references.
+Ask DSH to inspect this project without changing files.
+Find the main entry points and how the tests are run, then summarize what it finds.
 ```
 
-You can later ask “What has it found?”, continue with “Have that same agent fix it and run the tests”, or stop it when the plan changes.
+Codex delegates the task and receives the result when DSH finishes. You can ask “What has it found?”, have the same agent investigate further, or stop it when the plan changes. For implementation work, ask Codex to split the agreed plan into independent DSH tasks, run the relevant tests, and review the results.
 
 ## Why combine Codex and DSH?
 
@@ -74,11 +75,11 @@ The bundled skill combines completion callbacks with three practices:
 
 - Assign complete deliverables with clear file ownership, so independent agents can make progress without continual parent instructions.
 - Request a concise final answer and artifact evidence, then perform one consolidated acceptance pass. Keep detailed execution logs available for targeted inspection.
-- Start major phases with a concise parent-session handoff instead of carrying the entire project history into every phase. Continue the same DSH agent for related fixes and questions.
+- Keep the parent focused on the current phase, with accepted conclusions and artifact references. Continue the same DSH agent for related fixes and questions.
 
 These practices reduce parent execution and polling turns, unnecessary transcript transfer, and repeated review. The callback removes model-driven waiting; brief quality, parent-context size, and acceptance work still determine the rest of the overhead.
 
-### Waiting and resuming in practice
+### Waiting for results
 
 Live testing confirmed that Codex can stay idle while DSH works, without spending GPT quota on waiting. When the child finishes, its result arrives automatically and an idle Codex resumes to review it, without another user message. If Codex is already working, the result enters its current turn.
 
@@ -99,8 +100,8 @@ Already working in an ordinary DSH Web session? Attach it with `dsh_attach` and 
 | [Setup](docs/setup.md) | Credentials, persistent installation, upgrades, and older-session migration |
 | [Usage](docs/usage.md) | Tools, callbacks, follow-ups, progress, external sessions, and context budgets |
 | [Architecture](docs/architecture.md) | Runtime ownership, permissions, and lifecycle |
-| [Operations](docs/operations.md) | Service management, callback recovery, and browser history |
-| [Callback validation](docs/codex-callback-validation.md) | Completion delivery, idle waiting, and automatic resumption |
+| [Operations](docs/operations.md) | Service management, result inspection, and browser history |
+| [Callback validation](docs/codex-callback-validation.md) | Completion delivery, idle waiting, and parent review |
 | [Changelog](CHANGELOG.md) | Release changes and compatibility notes |
 
 The execution tools work with other MCP clients, including Claude Code. Automatic parent wakeup described here uses the Codex-specific callback; other clients use their supported notification or waiting mechanism. DSH appears as MCP activity in Codex today.

@@ -6,14 +6,16 @@ import {parseArgs} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {projectRoot, resolveDshCli} from './config.mjs';
-import {locations, installation, installationFile, privateDirectory, readableProgramDirectory, writeJson, readJson} from './platform.mjs';
+import {locations, installation, installationFile, privateDirectory, readableProgramDirectory, writeJson} from './platform.mjs';
 import {commandSpec, packageEntry, runCommand} from './commands.mjs';
 import {installPackage} from './install-package.mjs';
 import {backendDefault, installService, startService, stopService, statusService, removeService, systemdQuote, nativeServiceConflict} from './service.mjs';
 import {bridgeClient} from './bridge-client.mjs';
+import {accountStatus, printAccounts, captureProvider, guideDeepseek, installCommand} from './accounts.mjs';
 
 export const TESTED_DSH = '0.1.5-rc.1';
 export const TESTED_CODEX = '0.158.0';
+const MIN_CODEX = process.platform === 'win32' ? TESTED_CODEX : '0.157.0';
 const version = () => JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')).version;
 
 function skillTarget() {return join(locations().codex, 'skills/dsh-subagent');}
@@ -29,7 +31,7 @@ function compatibleCodex(spec) {
   const result = spawnSync(file, [...prefix, '--version'], {encoding: 'utf8', windowsHide: true});
   const found = result.stdout?.match(/codex(?:-cli)? (\d+)\.(\d+)\.(\d+)/);
   if (result.status !== 0 || !found) return false;
-  const actual = found.slice(1).map(Number), required = TESTED_CODEX.split('.').map(Number);
+  const actual = found.slice(1).map(Number), required = MIN_CODEX.split('.').map(Number);
   for (let i = 0; i < 3; i++) if (actual[i] !== required[i]) return actual[i] > required[i];
   return true;
 }
@@ -55,7 +57,7 @@ function ensureDependencies(installMissing) {
   }
   try {codex = commandSpec('codex', {prefix, explicit: process.env.DSH_CODEX_CLI});} catch (error) {if (process.env.DSH_CODEX_CLI) throw error;}
   if (codex && !compatibleCodex(codex)) {
-    if (process.env.DSH_CODEX_CLI) throw new Error(`DSH_CODEX_CLI requires Codex ${TESTED_CODEX} or newer for authenticated completion callbacks.`);
+    if (process.env.DSH_CODEX_CLI) throw new Error(`DSH_CODEX_CLI requires Codex ${MIN_CODEX} or newer for completion callbacks.`);
     console.log(`Preparing Codex ${TESTED_CODEX} for completion callbacks; your existing Codex installation is unchanged.`);
     codex = null;
     const managed = packageEntry(prefix, '@openai/codex', 'codex');
@@ -83,6 +85,40 @@ export function registerCodex(record) {
 function codexRegistration(codex) {
   return JSON.parse(runCommand(codex, ['mcp', 'list', '--json'], {stdio: 'pipe', encoding: 'utf8'}))
     .find(server => server.name === 'dsh_subagent');
+}
+
+function nextSteps() {
+  let normalCodex = false;
+  try {normalCodex = compatibleCodex(commandSpec('codex'));} catch {}
+  console.log('\nInstallation finished. You are back in your terminal.');
+  if (normalCodex) {
+    console.log('Open your project folder, then start a new Codex session with: codex');
+    console.log('An already-open Codex session may need to be restarted to load the new MCP tools and skill.');
+    console.log(`To use the Codex copy selected by this integration: ${installCommand} codex`);
+  } else {
+    console.log('Open your project folder, then explicitly start a Codex session with completion callbacks:');
+    console.log(`  ${installCommand} codex`);
+    console.log('This uses the Codex copy installed for this integration.');
+  }
+  console.log('In Codex, ask: "Use DSH to inspect this project and report back."');
+}
+
+// The public installation command never creates a coding session. Repeating it
+// is cheap, and an available update must not block access to work already running.
+export async function onboard() {
+  const record = installation();
+  if (!record) return setup([]);
+  const status = await statusService();
+  const workInProgress = status.running && status.active?.length;
+  if (record.version !== version() && !workInProgress)
+    return setup(record.skill === false ? ['--no-skill'] : []);
+  console.log(`DSH Subagent MCP ${record.version} is already installed.`);
+  if (record.version !== version()) console.log(`Version ${version()} is available. Existing work continues; run ${installCommand} upgrade when it finishes.`);
+  if (status.running) console.log(`Background service running; ${status.active?.length || 0} active DSH task(s).`);
+  else if (existsSync(join(locations().state, 'paused'))) console.log(`Background service is paused. Start it when ready: ${installCommand} start`);
+  else {await startService(record); console.log('Background service started.');}
+  printAccounts(accountStatus({cli: record.dsh, codex: record.codex}));
+  nextSteps();
 }
 
 export async function setup(argv, {source = false, launching = false} = {}) {
@@ -139,16 +175,11 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   const oldRegistration = codexRegistration(dependencies.codex);
   if (oldRegistration?.transport?.url) throw new Error('Codex already has a remote MCP server named dsh_subagent. Rename it before installing this local bridge.');
   const oldSkill = ownsSkill() ? realpathSync(skillTarget()) : null;
-  const providerPath = join(paths.config, 'provider.json');
-  if (args['capture-key']) {
-    const provider = Object.fromEntries(['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
-    if (!Object.keys(provider).length) throw new Error('--capture-key requires DEEPSEEK_API_KEY or DEEPSEEK_BASE_URL in this terminal.');
-    writeJson(providerPath, {...readJson(providerPath, {}), ...provider});
-    console.log('Provider settings saved privately; values are not printed.');
-  }
+  if (args['capture-key']) captureProvider();
   const profile = join(process.env.DSH_HOME || join((await import('node:os')).homedir(), '.dsh'), 'profiles/codex-subagent/package.json');
   console.log('Preparing the DSH profile…');
   runCommand([process.execPath, dependencies.dsh], ['--profile', 'codex-subagent', ...(existsSync(profile) ? [] : ['--from-default-profile', 'sdk']), '--dump-config'], {stdio: ['ignore', 'ignore', 'pipe']});
+  if (!args['capture-key'] && !args.yes && !launching) await guideDeepseek(dependencies.dsh);
   console.log('Checking the DSH runtime…');
   await (await import('./probe-runtime.mjs')).probeRuntime(dependencies.dsh);
   const root = source ? projectRoot : installPackage(projectRoot, join(paths.data, 'versions', version() + '-' + randomUUID().slice(0, 8)));
@@ -208,15 +239,19 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   }
   console.log('\nInstallation complete.');
   const {doctor} = await import('./doctor.mjs');
-  await doctor({json: false, runtimeChecked: true});
-  if (!launching) console.log('\nOpen Codex with: npx -y dsh-subagent-mcp@latest');
-  if (!existsSync(providerPath)) console.log('Use your existing DSH provider login, or set DEEPSEEK_API_KEY and rerun setup --capture-key.');
+  const report = await doctor({quiet: true, runtimeChecked: true});
+  if (report.ok) console.log('Codex integration and the DSH background service are ready.');
+  else for (const check of report.checks.filter(check => check.status === 'error')) console.error(`${check.name}: ${check.detail}`);
+  printAccounts(report.accounts);
+  if (!launching && report.ok) nextSteps();
 }
 
 export async function uninstall({purge = false} = {}) {
   const record = installation();
   if (!record) {console.log('No managed installation found.'); return;}
   const registered = codexRegistration(record.codex);
+  const status = await statusService();
+  if (status.running && status.active?.length) throw new Error('Active DSH tasks are running. Finish or interrupt them before uninstalling.');
   await removeService(record);
   if (registered?.transport?.args?.some(arg => arg === join(record.root, 'src/cli.mjs'))) runCommand(record.codex, ['mcp', 'remove', 'dsh_subagent']);
   if (ownsSkill()) unlinkSync(skillTarget());

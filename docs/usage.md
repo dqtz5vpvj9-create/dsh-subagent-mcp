@@ -1,5 +1,27 @@
 # Working with DSH agents
 
+Start Codex in your project folder after [installing the integration](setup.md).
+Describe the work you want delegated, including any limits that matter:
+
+```text
+Ask DSH to investigate why cancelled requests leave workers running.
+Keep it read-only and show me the root cause with code references.
+```
+
+Codex starts the DSH task and arranges the completion notification. You can work
+on something else or leave Codex idle. When the result arrives, Codex reviews it.
+
+Follow up naturally:
+
+```text
+Have the same DSH agent fix it and run the relevant tests.
+```
+
+You can ask for progress or tell Codex to stop the task. DSH agents retain their
+conversation for related work. The MCP tools below are a reference for custom
+clients and troubleshooting; normal Codex use is handled by the bundled skill.
+
+## MCP tools
 
 | Tool | What it does |
 |---|---|
@@ -11,6 +33,8 @@
 | `dsh_list` | Finds agents from current and previous client sessions; active agents first and then by most recent activity, bounded by `limit` (default 20) and `max_chars` (default 12000). Narrow with `status`, `cwd` or `match` instead of raising the cap; `total` counts the whole store and `matched` the filtered rows. |
 | `dsh_wait` | Waits until the root agent settles; omit `seconds` for persistent work. A completed settled response contains the final answer; repeated waits return the same result. |
 | `dsh_followup` | Continues an idle agent, restoring its persisted DSH conversation if necessary. |
+| `dsh_watch` | Registers completion delivery to the current Codex conversation. |
+| `dsh_unwatch` | Cancels a registered completion notification. |
 | `dsh_interrupt` | Cancels active and queued input, waits for idle, and flushes history. |
 | `dsh_rename` | Sets the agent name and its DSH session title. |
 | `dsh_close` | Releases the runtime and closes that bridge agent while retaining history. |
@@ -22,12 +46,11 @@ deadline. `wait_outcome: timeout` and `next_action: continue_waiting`
 mean the parent must keep supervising the task. Completion between calls remains
 available from persisted state, so the next wait returns it immediately.
 
-In Codex, the bundled skill registers `scripts/codex_notify.mjs` after each start
-or follow-up. Its default delivery is App Server `turn/start.toolOutput`: one
-host-side wait, then a `dsh_completion` tool result containing the answer and
-evidence path. The parent can do independent work or yield until that result
-arrives. Accept the artifacts once and continue authorized work. A child's
-answer does not complete the parent's integration or deployment work.
+In Codex, the bundled skill registers completion delivery after each start or
+follow-up. A background listener waits for the task and returns a `dsh_completion`
+tool result with the answer and evidence path. The parent can do independent work
+or end its turn until the result arrives. It then reviews the artifacts and
+continues the authorized work, including any integration or deployment still needed.
 
 `dsh_events` identifies a final reply from the root `turn/end` with reason
 `completed`, using that turn's last assistant message. It emits nothing for
@@ -41,17 +64,15 @@ both forms. Child messages are progress only and cannot become root replies.
 Use these options for a specific progress or debugging question. A registered
 callback delivers the result; use `dsh_wait` when no callback is available.
 
-The native Codex callback can wake an ended parent turn. It requires the parent
-App Server to support `turn/start.toolOutput`, Node.js and this
-package's dependencies. `--delivery queue` explicitly selects legacy queued
-input; a failed native delivery never retries via queue. The callback defaults
-to the parent `CODEX_THREAD_ID` and local App Server; use `--remote` for an
-existing `unix://PATH`, `ws://` or `wss://` endpoint.
+The native Codex callback can start the next turn of an idle conversation. It
+uses App Server `turn/start.toolOutput` through the existing local control socket
+on Linux and macOS, or Codex's official proxy on Windows. Both routes deliver the
+same completion result. This requires a compatible, reachable Codex App Server.
 
 Without a registered callback, keep one `dsh_wait` without `seconds` pending
 until completion. Cancel the host-side listener before interrupting its child;
 cancelling a wait alone only removes the observer. Delivery receipts and full
-results remain in the callback directory for recovery. See the
+results remain under `callbacks` in the bridge state directory for inspection. See the
 [skill](../skills/dsh-subagent/SKILL.md) for receipt handling.
 
 Pass the returned `id` as `agent_id` in later calls. A busy agent rejects follow-ups: interrupt it first when changing direction. Keep the agent open while further questions are expected; closing it disables follow-ups through the bridge.
@@ -79,7 +100,17 @@ returns `last_completed_answer` from its previous successful turn for the
 handoff. Minimal-preset agents never compact, so they refuse follow-ups once
 the conversation reaches 75% of the request limit.
 
-Model, provider, effort and permission are selected at creation. Defaults are defined by `Manager.start` in [manager.mjs](../src/manager.mjs); provider routes must be available in the DSH composition.
+Model, provider, effort and permission are selected when an agent is created:
+
+| Setting | Default |
+| :--- | :--- |
+| Model | `deepseek-flash` |
+| Provider | `deepseek-official` |
+| Reasoning effort | `max` |
+| Permission | `workspace-write` |
+
+Ask for read-only work when you want an investigation without file changes.
+Custom provider routes must be available in your DSH configuration.
 
 
 ## Workspace and agent preset

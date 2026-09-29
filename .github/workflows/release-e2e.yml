@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       publish:
-        description: Publish the exact tested package after both hosts pass
+        description: Publish the same package only after every installation and real user journey passes
         type: boolean
         default: false
 permissions:
@@ -16,24 +16,73 @@ concurrency:
   group: real-windows-release-acceptance
   cancel-in-progress: false
 jobs:
-  codex-dsh-real:
+  candidate:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - name: Pack once for every acceptance job and publication
+        run: npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate
+          path: '${{ runner.temp }}/dsh-subagent-mcp-*.tgz'
+          if-no-files-found: error
+  installation-journey:
+    needs: candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-candidate
+          path: candidate
+      - name: Follow the public installation flow with no account credentials
+        shell: bash
+        run: |
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
+          node test/e2e/install-journey.mjs --package "candidate/dsh-subagent-mcp-$version.tgz" --output installation-journey.json
+      - name: Publish installation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'installation-journey-${{ matrix.os }}'
+          path: installation-journey.json
+          if-no-files-found: error
+  codex-dsh-real:
+    needs: [candidate, installation-journey]
     runs-on: [self-hosted, '${{ inputs.runner_label }}']
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - run: npm ci --ignore-scripts
-      - name: Pack the release candidate
-        run: npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
-      - name: Real Codex and DSH on win and dorm
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-candidate
+          path: '${{ runner.temp }}/candidate'
+      - name: Real Codex and DSH user journeys on win and dorm
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          python3 test/e2e/windows-release.py --package "$RUNNER_TEMP/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results"
+          python3 test/e2e/windows-release.py --package "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results"
       - name: Publish the accepted package
         if: inputs.publish
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          npm publish "$RUNNER_TEMP/dsh-subagent-mcp-$version.tgz" --access public
+          npm publish "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --access public
       - name: Publish assertion evidence
         if: always()
         timeout-minutes: 3

@@ -45,16 +45,14 @@ node "<skill-dir>/scripts/codex_notify.mjs" --agent AGENT_ID
 ```
 
 The helper reads the parent `CODEX_THREAD_ID`, creates a result directory under
-`TMPDIR` (otherwise `/mnt/cache/data-cache` when available, then the system
-temporary directory), and checks the parent before returning a `watching`
-receipt. Retain that receipt with the acceptance criteria. Override the exact
+the bridge state directory’s `callbacks` folder, and checks the parent before
+returning a `watching` receipt. Retain that receipt with the acceptance criteria. Override the exact
 UUID with `--thread` only when needed; use the parent environment, not the child.
 It uses Node.js and the installed package dependencies on Windows, Linux and
 macOS. For a
 remote parent, pass its existing `unix://PATH`, `ws://` or `wss://` endpoint
-with `--remote`. On Windows, start the parent through `dsh-subagent-mcp codex`
-so the helper inherits its authenticated callback connection. The host-side
-callback preserves the child's sandbox.
+with `--remote`. Local callbacks connect to the existing Codex service on all
+three platforms. The host-side callback preserves the child's sandbox.
 
 The detached listener waits once without a timeout, saves the full result, and
 submits `turn/start.toolOutput` with the answer and evidence path. This arrives
@@ -81,7 +79,7 @@ children produce no callback. Each follow-up needs a new listener.
 `callback.json` records `delivered`, `delivery_failed`, `stopped` or `cancelled`.
 On failure, inspect the receipt and saved result. A lost acknowledgement may
 follow successful delivery: do not blindly retry or switch transports.
-Retain acceptance evidence, then clean up the callback's temporary directory.
+Retain acceptance evidence, then clean up the callback's result directory.
 
 Use `--delivery queue` only for an explicitly selected compatibility workflow.
 It sends ordinary queued input and records `queued`; it is never an automatic

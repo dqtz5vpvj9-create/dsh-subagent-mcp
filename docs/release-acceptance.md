@@ -1,52 +1,83 @@
-# Real end-to-end release acceptance
+# Release acceptance follows the user journey
 
-The `Real end-to-end release acceptance` GitHub Actions workflow is the publication
-gate. It runs the packed candidate through npm in a real Windows terminal on both
-`win` and `dorm`, using the machines' existing Codex accounts and DSH providers.
-Both Codex and DeepSeek make real model requests.
+The release workflow tests installation and a real delegated task from the
+public entry points. A successful model request alone does not satisfy the gate.
+The candidate is packed once. Every installation job, the real model jobs and the
+publication step use that same artifact. Publication depends on all three
+platform installation jobs and both real Windows journeys passing.
 
-For each host, the workflow installs the candidate and opens Codex. Codex delegates
-a file-writing task through MCP, registers the host listener through `dsh_watch`, and
-yields. The listener delivers native completion tool output. Codex then reads the
-child's file and replies with the verified contents. The test checks the exact
-bytes on disk, the parent's read call and tool output, and its final acceptance
-reply. Delegation and exactly one native callback must appear in the real parent
-rollout, alongside an observed pending callback receipt. This works with a
-read-only parent; the explicitly authorized DSH child writes the artifact.
-It also checks that the parent finishes its waiting turn before the callback and
-finishes its acceptance turn before the terminal is closed. A dropped SSH
-observer reconnects without sending the model prompt again.
+## What the gate requires
 
-The workflow then closes Codex, restarts the background service, opens Codex again,
-and continues the same DSH agent for another task. Both hosts must pass both rounds.
-Before reopening, it installs the previous public release (0.6.1) as an upgrade
-fixture. Explicit dependency paths let that old installer run despite its known
-Windows shim bug. The candidate then receives no setup flags: the single launch
-command must upgrade the old installation and retain the delegated conversation.
-The terminal driver accepts only one-time approvals for the requested DSH tools;
-it leaves the host's sandbox and approval settings in place.
-Only then can the publish step upload the exact tested tarball to npm.
+On fresh Windows, Linux and macOS CI machines, the packed npm command runs with
+isolated settings and no Codex or DeepSeek credentials. It must install, explain
+account readiness and the next step, then return to the shell. It must not open a
+Codex task. Repeating the command must have the same meaning. The test also runs
+the suggested work command's help, checks account status and uninstalls. These
+jobs use real dependency packages and real service initialization. They do not
+validate a provider login or make model requests.
+
+On `win` and `dorm`, the controller follows the public commands in a real Windows
+terminal. These two machines already have working accounts. Codex and DeepSeek
+both make real model requests:
+
+1. Install the candidate and confirm that installation returns to the shell.
+   Install the actual previous public release, `0.6.2`, while idle, then use the
+   candidate installation command to upgrade it.
+2. Explicitly open ordinary Codex in a directory containing spaces and non-ASCII
+   text. Give a natural-language task: ask DSH to write a delayed file, then ask
+   Codex to read and check it. The prompt supplies no skill name, callback tool
+   name, required waiting phrase or polling instructions.
+3. Observe the pending delegated task and the end of the parent's waiting turn.
+   DSH must complete the task, deliver one native completion, and let the same
+   parent read the actual file and report its contents. File bytes, tool calls,
+   tool output and final reply must agree.
+4. Give a natural follow-up using the same DSH child. Require another real
+   completion and parent acceptance. Close Codex after its work finishes; no
+   private endpoint or bearer-token command may be shown as a user next step.
+5. In a separate ordinary Codex invocation, require approval for `dsh_start`
+   through a per-tool `approval_mode="prompt"` override. Reject the real prompt.
+   No DSH child or requested file may be created, and the parent must finish its
+   response. This invocation never changes the user's global approval settings.
+6. Restart the integration service while idle and check that it is usable again.
+
+The driver may choose **Allow once** for the task the test explicitly requested.
+Each such choice is recorded. It never chooses session-wide or permanent
+approval. An unexpected confirmation fails the journey for review instead of
+being accepted blindly. The permission-refusal case is required, not a skipped
+case counted as success.
+
+Script observations read callback receipts and the saved parent transcript.
+They do not send progress prompts to either model. The idle interval must contain
+no extra parent turn before completion, but that assertion is not a measurement
+of billable tokens. Ordinary Codex owns its terminal and conversation history;
+this integration does not introduce a second parent-session or resume system.
+
+The gate separates the evidence boundaries: Windows real-model journeys reuse
+configured accounts; three-platform fresh installs cover missing accounts but
+do not complete sign-in. It does not claim that a human has used the product, or
+that real-model macOS and Linux journeys have been exercised. An independent
+README walkthrough remains a separate review.
 
 ## Running the gate
 
 The trusted Linux controller needs Node.js 24+, GitHub CLI, Python with `pexpect`,
 the official GitHub Actions runner, and working SSH aliases `win` and `dorm`.
-The Windows hosts need PowerShell 7 and their normal provider accounts configured.
-The test preserves credentials and task history. It refuses to replace an
-installation with active DSH tasks. Acceptance reinstalls the bridge on these
-hosts, so run it when they are available for release validation.
+The Windows controller scripts use PowerShell 7. The acceptance hosts need their
+normal provider accounts configured and must be available for reinstalling the
+integration. Credentials and unrelated task history are preserved. An active
+unrelated task prevents preparation rather than being interrupted.
 
 ```sh
 python3 test/e2e/dispatch.py --runner /path/to/actions-runner
 ```
 
-Add `--publish` to publish after acceptance succeeds. The helper registers a
+Add `--publish` to publish after every gate succeeds. The helper registers a
 one-job runner with a unique label and dispatches the workflow from `main`.
-Credentials stay on their respective machines; no model or SSH credentials are
-uploaded to GitHub. Pull requests do not trigger this trusted workflow.
+The runner waits while GitHub-hosted installation jobs finish. Pull requests
+cannot dispatch this workflow with its trusted host access.
 
-The workflow uploads assertion reports as `real-codex-dsh-acceptance`. Terminal
-transcripts stay private on the controller under
-`/mnt/cache/data-cache/dsh-release-e2e`. Reports identify each host, DSH agent,
-Codex parent, callback result, artifact checks, and service restart. A missing
-result or failed assertion fails the job and prevents publication.
+GitHub artifacts contain the installation reports and
+`real-codex-dsh-acceptance` assertion reports. Terminal transcripts stay private
+on the controller under `/mnt/cache/data-cache/dsh-release-e2e`. Reports identify
+which user actions were exercised and where a failed journey stopped. They
+contain no account credentials, callback tokens or private terminal transcript.

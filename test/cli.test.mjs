@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,mkdirSync,rmSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
-import {tmpdir} from 'node:os';
+import {temporaryDirectory} from '../src/platform.mjs';
 import {once} from 'node:events';
 import {fileURLToPath} from 'node:url';
 import {control} from '../src/ipc.mjs';
@@ -15,7 +15,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 
 for (const longPath of [false,true])
 test(`public CLI serves MCP and protects active tasks (${longPath?'long Unicode':'ordinary'} state path)`,async()=>{
- const root=mkdtempSync(join(tmpdir(),'dsh-cli-test-'));
+ const root=mkdtempSync(join(temporaryDirectory(),'dsh-cli-test-'));
  const state=longPath?join(root,'long user directory 雪 '.repeat(5).trimEnd()):root;
  mkdirSync(state,{recursive:true});
  const env={...process.env,DSH_SUBAGENT_STATE:state,DSH_CLI:process.execPath};
@@ -34,7 +34,7 @@ test(`public CLI serves MCP and protects active tasks (${longPath?'long Unicode'
     rejected.write('{"authenticate":"wrong-token"}\n{"bridge_control":"status"}\n');
     await once(rejected,'close');assert.equal(data,'','unauthenticated callers must not receive service data');
   }
-  await client.connect(new StdioClientTransport({command:process.execPath,args:longPath?[cli,'mcp']:[cli],env}));
+  await client.connect(new StdioClientTransport({command:process.execPath,args:[cli,'mcp'],env}));
   const tools=await client.listTools();assert.ok(tools.tools.some(t=>t.name==='dsh_wait'));
   const response=await client.callTool({name:'dsh_list',arguments:{}});
   assert.deepEqual(JSON.parse(response.content[0].text),{len:'49 chars',count:0,total:0,items:[]});

@@ -3,13 +3,18 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import WebSocket from 'ws';
 import {readJson} from './platform.mjs';
+import {openNativeCodexSocket} from './codex-transport.mjs';
 
-const connection = () => process.env.DSH_CODEX_CONNECTION ? readJson(process.env.DSH_CODEX_CONNECTION) : null;
+const connection = () => {
+  if (!process.env.DSH_CODEX_CONNECTION) return null;
+  const value = readJson(process.env.DSH_CODEX_CONNECTION);
+  if (!value) throw new Error('The explicitly configured Codex connection is no longer available. The saved DSH result is retained.');
+  return value;
+};
 
 export function callbackEndpoint(endpoint) {
   endpoint ||= process.env.DSH_CODEX_REMOTE || connection()?.endpoint;
   const local=join(process.env.CODEX_HOME||join(homedir(),'.codex'),'app-server-control','app-server-control.sock');
-  if(process.platform==='win32'&&!endpoint)throw new Error('Start Codex with dsh-subagent-mcp codex, or set DSH_CODEX_REMOTE to its existing App Server endpoint.');
   if(!endpoint||endpoint==='unix://')return `ws+unix://${local}:/`;
   if(endpoint.startsWith('unix://'))return `ws+unix://${endpoint.slice(7)}:/`;
   return endpoint;
@@ -18,8 +23,12 @@ export function callbackEndpoint(endpoint) {
 // One connection and one delivery attempt. A lost acknowledgement may follow
 // successful delivery, so the caller must not retry through another transport.
 export async function codexCallback({threadId,output,endpoint,check=false},{timeoutMs=15000}={}) {
-  const token=process.env.DSH_CODEX_TOKEN || connection()?.token;
-  const socket=new WebSocket(callbackEndpoint(endpoint),token?{headers:{Authorization:'Bearer '+token}}:{});
+  const configured=connection();
+  const remote=endpoint || process.env.DSH_CODEX_REMOTE || configured?.endpoint;
+  const token=process.env.DSH_CODEX_TOKEN || configured?.token;
+  const socket=process.platform==='win32'&&!remote
+    ? openNativeCodexSocket()
+    : new WebSocket(callbackEndpoint(remote),token?{headers:{Authorization:'Bearer '+token}}:{});
   let timer;
   try {
     return await new Promise((resolve,reject)=>{

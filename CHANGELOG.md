@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+- The default command installs the integration and returns to the terminal. Repeating it checks the existing installation; it never opens a coding session.
+- Use ordinary Codex with the installed MCP tools. The optional `codex` subcommand only launches the selected CLI and forwards its arguments. The bridge no longer creates a private Codex App Server or manages parent conversations.
+- Preserve the working Linux and macOS callback connection. Windows callbacks use the official Codex proxy to reach the existing daemon; Windows SSH can start that daemon through the logged-in user service.
+- Show Codex and DeepSeek account configuration separately from installation health. Add explicit `login` and hidden-key `configure` commands, and retain existing provider settings.
+- Save callback results in the bridge's state directory. New DSH agents pick up saved provider settings without interrupting running agents.
+- Gate publication of the same packed artifact on Windows, Linux and macOS installation journeys, followed by real Codex-to-DSH task acceptance on both Windows hosts. Task prompts use the public workflow; the tests do not teach the parent how to register callbacks.
+
 ## 0.6.2
 
 - Check the actual DSH SDK startup during installation and diagnostics. Existing DSH distributions without the required agent presets receive a compatible private runtime; the user's global DSH installation is preserved.

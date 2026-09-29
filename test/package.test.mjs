@@ -72,12 +72,12 @@ else process.exit(3);
     assert.equal(realpathSync(join(env.CODEX_HOME, 'skills/dsh-subagent')), realpathSync(join(record.root, 'skills/dsh-subagent')));
     assert.ok(!readFileSync(join(config, 'installation.json'), 'utf8').includes('fixture-private-key'));
     if (service === 'background') assert.equal(JSON.parse(readFileSync(join(config, 'provider.json'), 'utf8')).DEEPSEEK_API_KEY, 'fixture-private-key');
-    if (service === 'auto') {
-      assert.equal(JSON.parse(readFileSync(launches, 'utf8')).length, 1);
-      const again = open(entry);
+    assert.equal(existsSync(launches), false, 'Installing must not launch a coding session.');
+    for (const again of [open(entry), run(entry)]) {
+      assert.match(again, /already installed/);
       assert.ok(!again.includes('Preparing installation'));
       assert.deepEqual(JSON.parse(readFileSync(join(config, 'installation.json'), 'utf8')), record);
-      assert.equal(JSON.parse(readFileSync(launches, 'utf8')).length, 2);
+      assert.equal(existsSync(launches), false, 'Repeating installation must return to the terminal.');
     }
     assert.equal(JSON.parse(run(installed, 'doctor', '--json')).ok, true);
     writeFileSync(failOnce, '');

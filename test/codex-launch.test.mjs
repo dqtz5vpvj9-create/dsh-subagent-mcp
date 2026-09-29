@@ -1,60 +1,60 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {fileURLToPath, pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
 import {temporaryDirectory} from '../src/platform.mjs';
 
-for (const scenario of ['client exit', 'terminal default', 'server exit', 'missing executable'])
-test(`Codex launcher authenticates its connection and removes credentials after ${scenario}`, {timeout: 30000}, () => {
+const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
+
+for (const scenario of [
+  {name: 'an explicit plain Codex launch', args: [], code: 0},
+  {name: 'project paths, configuration and a nonzero exit', args: ['--cd', 'A folder 雪', '--model', 'test-model', '-c', 'approval_policy="on-request"'], code: 7},
+  {name: 'the ordinary Codex resume command', args: ['resume', '01a0eb42-386d-7582-bcef-a37bcd88acae'], code: 0},
+]) test(`Codex entrypoint preserves ${scenario.name}`, () => {
   const root = mkdtempSync(join(temporaryDirectory(), 'dsh-launch-'));
-  const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
-  const fake = join(root, 'codex fixture.mjs'), report = join(root, 'report.json');
-  const ws = import.meta.resolve('ws');
+  const project = join(root, 'Project space 雪'), config = join(root, 'config');
+  mkdirSync(project); mkdirSync(config);
+  const fake = join(root, 'codex fixture.mjs'), report = join(root, 'calls.jsonl');
   writeFileSync(fake, `
-import WebSocket, {WebSocketServer} from ${JSON.stringify(ws)};
-import {readFileSync,writeFileSync} from 'node:fs';
-const args=process.argv.slice(2);
-if(args[0]==='app-server') {
-  if(process.env.LAUNCH_SCENARIO==='server exit')process.exit(4);
-  const token=readFileSync(args[args.indexOf('--ws-token-file')+1],'utf8').trim();
-  const endpoint=new URL(args[args.indexOf('--listen')+1]);
-  const server=new WebSocketServer({host:endpoint.hostname,port:Number(endpoint.port),verifyClient:info=>info.req.headers.authorization==='Bearer '+token});
-  server.on('connection',socket=>socket.on('message',data=>socket.send(data)));
-} else {
-  const connection=JSON.parse(readFileSync(process.env.DSH_CODEX_CONNECTION,'utf8'));
-  const socket=new WebSocket(connection.endpoint,{headers:{Authorization:'Bearer '+process.env.DSH_CODEX_TOKEN}});
-  socket.on('open',()=>socket.send('authenticated'));
-  socket.on('message',data=>{
-    writeFileSync(process.env.LAUNCH_REPORT,JSON.stringify({args,reply:String(data),matchingToken:connection.token===process.env.DSH_CODEX_TOKEN}));
-    socket.close();process.exit(7);
-  });
-}
+import {appendFileSync} from 'node:fs';
+appendFileSync(process.env.LAUNCH_REPORT, JSON.stringify({
+  args: process.argv.slice(2), cwd: process.cwd(),
+  privateConnection: process.env.DSH_CODEX_CONNECTION,
+  privateRemote: process.env.DSH_CODEX_REMOTE,
+  privateToken: process.env.DSH_CODEX_TOKEN
+}) + '\\n');
+process.exit(Number(process.env.LAUNCH_EXIT));
 `);
-  const env = {...process.env, DSH_SUBAGENT_CONFIG: join(root, 'config'), DSH_SUBAGENT_STATE: join(root, 'state'),
-    DSH_CODEX_CLI: scenario === 'missing executable' ? join(root, 'absent.exe') : fake, LAUNCH_SCENARIO: scenario, LAUNCH_REPORT: report};
-  mkdirSync(env.DSH_SUBAGENT_CONFIG);
-  writeFileSync(join(env.DSH_SUBAGENT_CONFIG, 'installation.json'), JSON.stringify({codex: scenario === 'missing executable' ? [env.DSH_CODEX_CLI] : [process.execPath, fake]}));
-  const terminal = join(root, 'terminal.mjs');
-  writeFileSync(terminal, "Object.defineProperty(process.stdin, 'isTTY', {value: true});\n");
-  const normalExit = ['client exit', 'terminal default'].includes(scenario);
+  // Launching an existing installation must not trigger an implicit upgrade.
+  const record = {version: '0.0.1', codex: [process.execPath, fake]};
+  writeFileSync(join(config, 'installation.json'), JSON.stringify(record));
+  const env = {...process.env, DSH_SUBAGENT_CONFIG: config, DSH_SUBAGENT_STATE: join(root, 'state'), LAUNCH_REPORT: report, LAUNCH_EXIT: String(scenario.code)};
+  for (const name of ['SSH_CONNECTION', 'DSH_CODEX_CONNECTION', 'DSH_CODEX_REMOTE', 'DSH_CODEX_TOKEN']) delete env[name];
   try {
-    const command = scenario === 'terminal default' ? ['--import', pathToFileURL(terminal).href, cli] : [cli, 'codex', '--cd', 'A folder 雪', '--model', 'test-model'];
-    const result = spawnSync(process.execPath, command, {env, encoding: 'utf8', timeout: 25000});
+    const result = spawnSync(process.execPath, [cli, 'codex', ...scenario.args], {cwd: project, env, encoding: 'utf8', timeout: 10000});
     assert.equal(result.error, undefined);
-    assert.equal(result.status, normalExit ? 7 : 1, result.stderr);
-    const sessions = join(root, 'state/codex');
-    for (const directory of readdirSync(sessions)) {
-      assert.ok(!existsSync(join(sessions, directory, 'token')));
-      assert.ok(!existsSync(join(sessions, directory, 'connection.json')));
-      assert.ok(existsSync(join(sessions, directory, 'app-server.log')));
-    }
-    if (normalExit) {
-      const captured = JSON.parse(readFileSync(report, 'utf8'));
-      assert.equal(captured.matchingToken, true); assert.equal(captured.reply, 'authenticated');
-      assert.match(captured.args[1], /^ws:\/\/127\.0\.0\.1:/);
-      assert.deepEqual(captured.args.slice(2), ['--remote-auth-token-env', 'DSH_CODEX_TOKEN', ...(scenario === 'terminal default' ? [] : ['--cd', 'A folder 雪', '--model', 'test-model'])]);
-    }
+    assert.equal(result.status, scenario.code, result.stderr);
+    const calls = readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(calls, [{args: scenario.args, cwd: project}]);
+    assert.deepEqual(JSON.parse(readFileSync(join(config, 'installation.json'), 'utf8')), record);
+    assert.equal(existsSync(join(root, 'state', 'codex')), false);
+    assert.doesNotMatch(result.stdout + result.stderr, /ws:\/\/|DSH_CODEX_TOKEN|First run:|Updating DSH/);
+  } finally {rmSync(root, {recursive: true, force: true});}
+});
+
+test('a missing Codex executable fails without creating private session state', () => {
+  const root = mkdtempSync(join(temporaryDirectory(), 'dsh-launch-missing-'));
+  const config = join(root, 'config'); mkdirSync(config);
+  writeFileSync(join(config, 'installation.json'), JSON.stringify({codex: [join(root, 'absent.exe')]}));
+  const env = {...process.env, DSH_SUBAGENT_CONFIG: config, DSH_SUBAGENT_STATE: join(root, 'state')};
+  delete env.SSH_CONNECTION;
+  try {
+    const result = spawnSync(process.execPath, [cli, 'codex'], {env, encoding: 'utf8', timeout: 10000});
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ENOENT|not found/);
+    assert.equal(existsSync(join(root, 'state', 'codex')), false);
   } finally {rmSync(root, {recursive: true, force: true});}
 });

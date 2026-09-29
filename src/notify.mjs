@@ -5,7 +5,7 @@ import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {codexCallback} from './codex-callback.mjs';
 import {bridgeClient} from './bridge-client.mjs';
-import {privateDirectory, temporaryDirectory, readJson, installation} from './platform.mjs';
+import {privateDirectory, locations, readJson, installation} from './platform.mjs';
 import {commandSpec, runCommand} from './commands.mjs';
 
 export function completionOutput(result, resultPath) {
@@ -96,7 +96,8 @@ export async function notify(argv = process.argv.slice(2)) {
   if (receipt.status !== 'watching') process.exitCode = 1;
 }
 
-export async function registerCallback(args, {env = process.env, temp = temporaryDirectory()} = {}) {
+export async function registerCallback(args, {env = process.env, temp = join(args.state || locations().state, 'callbacks')} = {}) {
+  if (!args['output-dir']) privateDirectory(temp);
   const directory = resolve(args['output-dir'] || mkdtempSync(join(temp, 'dsh-callback-')));
   privateDirectory(directory);
   writeFileSync(join(directory, 'callback.json'), JSON.stringify({status: 'starting', agent_id: args.agent, thread_id: args.thread}), {flag: 'wx', mode: 0o600});

@@ -13,15 +13,17 @@ try {
   else if (['--help', '-h', 'help'].includes(command)) console.log(`DSH Subagent MCP ${version}
 
 Usage:
-  dsh-subagent-mcp                          Open Codex; install on first use
+  dsh-subagent-mcp                          Install or update the integration, then return to your terminal
   dsh-subagent-mcp setup [--capture-key] [--service auto|background]
   dsh-subagent-mcp doctor [--json]
+  dsh-subagent-mcp login                    Sign in to Codex without starting a coding session
+  dsh-subagent-mcp configure [--capture-key] Configure a DeepSeek API key
   dsh-subagent-mcp status [--json]
   dsh-subagent-mcp start | stop [--force] | restart
   dsh-subagent-mcp logs
   dsh-subagent-mcp upgrade
   dsh-subagent-mcp uninstall [--purge]
-  dsh-subagent-mcp codex [Codex arguments]
+  dsh-subagent-mcp codex [Codex arguments]  Explicitly open Codex using the installed integration
   dsh-subagent-mcp dsh [DSH arguments]
   dsh-subagent-mcp notify --agent AGENT_ID
   dsh-subagent-mcp adopt
@@ -34,7 +36,10 @@ Use --no-install-deps to manage dependencies yourself, or --no-skill to keep a
 custom skill. --skill remains accepted for older installation commands.
 Uninstall preserves history and credentials unless --purge is specified.
 Upgrades and ordinary stops refuse to interrupt active tasks.`);
+  else if (command === undefined) await (await import('./setup.mjs')).onboard();
   else if (command === 'setup') await (await import('./setup.mjs')).setup(args);
+  else if (command === 'configure') await (await import('./accounts.mjs')).configure(args);
+  else if (command === 'login') await (await import('./accounts.mjs')).login(args);
   else if (command === 'doctor') await (await import('./doctor.mjs')).doctor(flags({json: {type: 'boolean'}}));
   else if (command === 'status') {
     const {json} = flags({json: {type: 'boolean'}});
@@ -59,7 +64,7 @@ Upgrades and ordinary stops refuse to interrupt active tasks.`);
     (await import('./commands.mjs')).runCommand('npm', ['exec', '--yes', '--package=dsh-subagent-mcp@latest', '--', 'dsh-subagent-mcp', 'setup', ...(installation()?.skill === false ? ['--no-skill'] : [])]);
   } else if (command === 'uninstall') await (await import('./setup.mjs')).uninstall(flags({purge: {type: 'boolean'}}));
   else if (command === 'notify') await (await import('./notify.mjs')).notify(args);
-  else if (command === 'codex' || (command === undefined && process.stdin.isTTY)) await (await import('./codex-launch.mjs')).launchCodex(args);
+  else if (command === 'codex') await (await import('./codex-launch.mjs')).launchCodex(args);
   else if (command === 'dsh') {
     const env = {...process.env, ...installation()?.env, ...providerEnvironment()};
     (await import('./commands.mjs')).runCommand([process.execPath, resolveDshCli()], args, {env});
@@ -68,6 +73,6 @@ Upgrades and ordinary stops refuse to interrupt active tasks.`);
     flags({});
     if (process.platform !== 'linux') throw new Error('Legacy session adoption requires Linux flock. Normal DSH sessions work on all supported platforms.');
     await (await import('./adopt.mjs')).adopt();
-  } else if (command === undefined || command === 'mcp' || command === '--daemon') await (await import('./server.mjs')).main();
+  } else if (command === 'mcp' || command === '--daemon') await (await import('./server.mjs')).main();
   else throw new Error('Unknown command: ' + command + '. Run dsh-subagent-mcp --help.');
 } catch (error) {console.error(error.message); process.exitCode = 1;}

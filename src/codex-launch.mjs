@@ -1,76 +1,27 @@
-import net from 'node:net';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
-import {join} from 'node:path';
-import {mkdtempSync, writeFileSync, readFileSync, openSync, closeSync, rmSync} from 'node:fs';
-import {randomBytes} from 'node:crypto';
-import {setTimeout as delay} from 'node:timers/promises';
-import WebSocket from 'ws';
-import {commandSpec, runCommand} from './commands.mjs';
-import {installation, locations, privateDirectory, writeJson, temporaryDirectory} from './platform.mjs';
-import {connectHostedCodex, stopProcessTree} from './codex-host.mjs';
+import {commandSpec} from './commands.mjs';
+import {installation} from './platform.mjs';
 
+// An optional entrypoint for the privately installed CLI. Codex owns its
+// sessions, terminal and daemon, exactly as when launched from PATH.
 export async function launchCodex(args) {
-  const passthrough = ['login', 'logout', 'doctor', '--version', '-V', '--help', '-h'].includes(args[0]);
-  let record = installation();
-  const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-  if ((!record || (record.version && record.version !== version)) && !passthrough) {
-    console.log(record ? `Updating DSH for Codex from ${record.version} to ${version}…` : 'First run: setting up DSH for Codex…');
-    await (await import('./setup.mjs')).setup([], {launching: true});
-    if (process.exitCode) return;
-    record = installation();
-  }
+  const record = installation();
   const spec = record?.codex || commandSpec('codex', {explicit: process.env.DSH_CODEX_CLI});
-  if (passthrough) {
-    runCommand(spec, args); return;
+  const informational = ['login', 'logout', 'doctor', '--version', '-V', '--help', '-h'].includes(args[0]);
+  if (process.platform === 'win32' && process.env.SSH_CONNECTION && !informational) {
+    await (await import('./service.mjs')).startService();
+    await (await import('./codex-host.mjs')).startWindowsCodexDaemon();
   }
-  const probe = net.createServer();
-  await new Promise((resolve, reject) => {probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve);});
-  const endpoint = 'ws://127.0.0.1:' + probe.address().port;
-  await new Promise(resolve => probe.close(resolve));
-  const root = privateDirectory(join(locations().state, 'codex'));
-  const directory = privateDirectory(mkdtempSync(join(root, 'session-')));
-  const token = randomBytes(32).toString('hex'), tokenFile = join(directory, 'token');
-  writeFileSync(tokenFile, token + '\n', {mode: 0o600});
-  const connectionFile = join(directory, 'connection.json');
-  writeJson(connectionFile, {endpoint, token, temporaryDirectory: temporaryDirectory()});
-  const env = {...process.env, DSH_CODEX_REMOTE: endpoint, DSH_CODEX_TOKEN: token, DSH_CODEX_CONNECTION: connectionFile};
   const [file, ...prefix] = spec;
-  let server, client;
-  const stop = () => {if(client)stopProcessTree(client); server?.stop();};
-  process.once('SIGINT', stop); process.once('SIGTERM', stop);
+  const child = spawn(file, [...prefix, ...args], {env: process.env, stdio: 'inherit'});
+  const interrupt = () => child.kill('SIGINT');
+  const terminate = () => child.kill('SIGTERM');
+  process.once('SIGINT', interrupt); process.once('SIGTERM', terminate);
   try {
-    if (process.platform === 'win32' && process.env.SSH_CONNECTION) {
-      await (await import('./service.mjs')).startService();
-      server = await connectHostedCodex({directory, cwd: process.cwd(), env});
-    } else {
-      const log = openSync(join(directory, 'app-server.log'), 'a', 0o600);
-      const child = spawn(file, [...prefix, 'app-server', '--config', 'mcp_servers.dsh_subagent.env_vars=["DSH_CODEX_CONNECTION"]', '--listen', endpoint, '--ws-auth', 'capability-token', '--ws-token-file', tokenFile],
-        {env, windowsHide: true, stdio: ['ignore', log, log]});
-      closeSync(log);
-      const done = new Promise(resolve => {child.once('exit', resolve); child.once('error', resolve);});
-      server = {done, running: () => child.exitCode === null, stop: () => stopProcessTree(child)};
-      await new Promise((resolve, reject) => {child.once('spawn', resolve); child.once('error', reject);});
-    }
-    let ready = false;
-    for (let i = 0; i < 100 && server.running(); i++) {
-      ready = await new Promise(resolve => {
-        const socket = new WebSocket(endpoint, {headers: {Authorization: 'Bearer ' + token}, handshakeTimeout: 1000});
-        socket.once('open', () => {socket.close(); resolve(true);});
-        socket.once('error', () => resolve(false));
-      });
-      if (ready) break;
-      await delay(150);
-    }
-    if (!ready) throw new Error('Codex App Server did not start. Inspect ' + join(directory, 'app-server.log') + '. Update Codex if it does not support authenticated WebSockets.');
-    client = spawn(file, [...prefix, '--remote', endpoint, '--remote-auth-token-env', 'DSH_CODEX_TOKEN', ...args], {env, stdio: 'inherit'});
-    server.done.then(() => stopProcessTree(client));
-    const [code] = await once(client, 'exit');
-    process.exitCode = code || 0;
+    const [code, signal] = await once(child, 'exit');
+    process.exitCode = code ?? (signal === 'SIGINT' ? 130 : 1);
   } finally {
-    process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
-    if (server) {server.stop(); await server.done;}
-    // Keep diagnostic logs, remove the connection's bearer credentials.
-    rmSync(tokenFile, {force: true}); rmSync(connectionFile, {force: true});
+    process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', terminate);
   }
 }
