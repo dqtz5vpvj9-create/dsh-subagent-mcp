@@ -67,6 +67,7 @@ function ensureDependencies(installMissing) {
   if (missing.length) {
     if (!installMissing) throw new Error('Missing dependencies: ' + missing.join(', ') + '. Rerun setup without --no-install-deps.');
     console.log('Installing missing dependencies for this user: ' + missing.join(', '));
+    console.log('Downloading dependencies; this may take a few minutes.');
     // A private package.json lets subsequent installs retain both dependencies.
     privateDirectory(prefix);
     if (!existsSync(join(prefix, 'package.json'))) writeJson(join(prefix, 'package.json'), {name: 'dsh-subagent-dependencies', private: true});

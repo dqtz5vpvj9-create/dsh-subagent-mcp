@@ -46,6 +46,10 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - uses: actions/setup-python@v5
+        if: runner.os != 'Windows'
+        with:
+          python-version: '3.12'
       - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v4
         with:

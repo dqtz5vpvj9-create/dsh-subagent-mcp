@@ -87,11 +87,11 @@ export function captureProvider() {
 export function hiddenInput(prompt, {input = process.stdin, output = process.stdout} = {}) {
   if (!input.isTTY || !output.isTTY) throw new Error('Use an interactive terminal to enter a key, or configure --capture-key with DEEPSEEK_API_KEY set.');
   return new Promise((resolveInput, reject) => {
-    const wasRaw = input.isRaw, wasPaused = input.isPaused();
+    const wasRaw = input.isRaw;
     let value = '';
     const finish = (error, result) => {
       input.removeListener('data', data); input.removeListener('end', end); input.removeListener('error', fail);
-      input.setRawMode(wasRaw); if (wasPaused) input.pause();
+      input.setRawMode(wasRaw); input.pause();
       output.write('\n'); error ? reject(error) : resolveInput(result);
     };
     const end = () => finish(new Error('Input closed; no settings were changed.'));

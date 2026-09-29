@@ -5,6 +5,7 @@ import {mkdtempSync, mkdirSync, readFileSync, existsSync, readdirSync, rmSync, w
 import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {parseArgs} from 'node:util';
+import {fileURLToPath} from 'node:url';
 import {commandSpec} from '../../src/commands.mjs';
 import {temporaryDirectory} from '../../src/platform.mjs';
 
@@ -19,19 +20,26 @@ for (const key of Object.keys(env)) if (/^(DEEPSEEK_|OPENAI_|AZURE_OPENAI_|DSH_C
 const [npm, ...prefix] = commandSpec('npm');
 const npmArgs = [...prefix, 'exec', '--yes', '--package=' + resolve(values.package), '--', 'dsh-subagent-mcp'];
 const report = {platform: process.platform, node: process.version, ok: false, modelRequests: 'not exercised', checks: []};
-const run = (args = [], statuses = [0]) => {
-  const result = spawnSync(npm, [...npmArgs, ...args], {cwd: project, env, encoding: 'utf8', timeout: 480000});
+const run = (args = [], statuses = [0], terminal = false) => {
+  const command = terminal
+    ? ['python3', fileURLToPath(new URL('./skip-key-pty.py', import.meta.url)), '--', npm, ...npmArgs, ...args]
+    : [npm, ...npmArgs, ...args];
+  const result = spawnSync(command[0], command.slice(1), {cwd: project, env, encoding: 'utf8', timeout: 480000});
   assert.equal(result.error, undefined);
   assert.ok(statuses.includes(result.status), result.stdout + result.stderr);
   return result.stdout + result.stderr;
 };
 const assertNoSession = () => {
   const directory = join(env.DSH_SUBAGENT_STATE, 'codex');
-  assert.ok(!existsSync(directory) || readdirSync(directory).length === 0, 'An installation must not start a Codex work session');
+  assert.ok(!existsSync(directory) || readdirSync(directory).length === 0, 'An installation must not start a managed Codex work session');
+  const nativeSessions = join(env.CODEX_HOME, 'sessions');
+  assert.ok(!existsSync(nativeSessions) || !readdirSync(nativeSessions, {recursive: true, withFileTypes: true}).some(entry => entry.isFile()),
+    'An installation must not create an ordinary Codex task either');
 };
 let installed;
 try {
-  const text = run();
+  const interactive = process.platform !== 'win32';
+  const text = run([], [0], interactive);
   installed = JSON.parse(readFileSync(join(env.DSH_SUBAGENT_CONFIG, 'installation.json'), 'utf8'));
   assertNoSession();
   assert.doesNotMatch(text, /Ask Codex to do anything|Disconnected from this task/);
@@ -41,7 +49,8 @@ try {
   assert.match(text, /DeepSeek account: missing/i);
   assert.match(text, /dsh-subagent-mcp@latest configure/);
   report.checks.push({journey: 'new user installs without credentials', returnedToShell: true,
-    noWorkSessionStarted: true, explicitWorkCommand: true, accountNextStepsShown: true});
+    noWorkSessionStarted: true, explicitWorkCommand: true, accountNextStepsShown: true,
+    ...(interactive ? {realTerminal: true, optionalKeySkippedWithEnter: true, exitedWithoutInterrupt: true} : {})});
   run();
   assertNoSession();
   report.checks.push({journey: 'repeat the install command', returnedToShell: true, noWorkSessionStarted: true});
@@ -63,6 +72,8 @@ try {
   process.exitCode = 1;
 } finally {
   // Cleanup is limited to this isolated installation, even after a failed step.
+  const installationFile = join(env.DSH_SUBAGENT_CONFIG, 'installation.json');
+  if (!installed && existsSync(installationFile)) installed = JSON.parse(readFileSync(installationFile, 'utf8'));
   if (installed && existsSync(join(installed.root, 'src/cli.mjs')))
     spawnSync(process.execPath, [join(installed.root, 'src/cli.mjs'), 'stop', '--force'], {env, timeout: 40000, stdio: 'ignore'});
   mkdirSync(resolve(values.output, '..'), {recursive: true});

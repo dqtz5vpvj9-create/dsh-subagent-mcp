@@ -79,6 +79,12 @@ if(action==='prepare') {
   }
   write('started',{started:Date.now(),run});
   console.log(JSON.stringify({root,workspace,platform:process.platform,node:process.version}));
+} else if(action==='configure-before'||action==='configure-after') {
+  const provider=join(process.env.LOCALAPPDATA,'dsh-subagent-mcp/config/provider.json');
+  const metadata=existsSync(provider)?{size:statSync(provider).size,modified:statSync(provider).mtimeMs}:null;
+  if(action==='configure-before')write('configure-provider-before',metadata);
+  else assert.deepEqual(metadata,read(join(root,'configure-provider-before.json')),'Cancelling configure must preserve the existing provider settings');
+  console.log(JSON.stringify({ok:true,providerSettingsUntouched:action==='configure-after'}));
 } else if(action==='begin') {
   const thread=argument||undefined;
   write(phase+'-observation',{started:Date.now(),deadline:Date.now()+720000,callbacks:receipts().map(item=>item.file),

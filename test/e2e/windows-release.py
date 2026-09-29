@@ -121,6 +121,29 @@ class Terminal:
                 return {'ok':True,'installationReturnedToShell':True,'noWorkSessionOpened':True,'publicNextStepVisible':True}
         raise RuntimeError('Installation did not return to the shell before the deadline.')
 
+    def configure_cancel(self):
+        prompt=TERMINAL_SPACE.join(['DeepSeek','API','key',r'\(hidden;','press','Enter','to',r'cancel\):'])
+        skipped=False
+        deadline=time.monotonic()+90
+        while time.monotonic()<deadline:
+            found=self.child.expect([prompt,r'\x1b\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=2)
+            if found==0:
+                if skipped:raise RuntimeError('Configure repeated its key prompt after cancellation.')
+                self.child.send('\r');skipped=True
+                deadline=min(deadline,time.monotonic()+30)
+            elif found==1:self.child.send('\x1b[1;1R')
+            elif found==2:
+                self.child.close();self.log.close()
+                text=clean_terminal(self.logfile.read_text(encoding='utf-8'))
+                if not skipped or self.child.exitstatus!=0:
+                    raise RuntimeError('Configure did not exit successfully after Enter cancellation: '+text[-1500:])
+                import re
+                if not re.search(r'No\s*settings\s*changed\.',text):
+                    raise RuntimeError('Configure did not confirm that settings were unchanged.')
+                return {'ok':True,'journey':'configure then press Enter to cancel',
+                        'realTerminal':True,'noKeyEntered':True,'returnedToShellWithoutInterrupt':True}
+        raise RuntimeError('Configure kept the terminal open after Enter cancellation.')
+
     def ready(self):
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
@@ -195,6 +218,10 @@ def acceptance(host,package,output,run):
         terminal=Terminal(host,run,'install',private_logs/f'{host}-install.log',report)
         report['phases'].append(terminal.install());terminal=None
         print(f'{host}: installation returned to the shell with a public next step',flush=True)
+        state(host,'configure-before',run)
+        terminal=Terminal(host,run,'configure',private_logs/f'{host}-configure-cancel.log',report)
+        report['phases'].append(terminal.configure_cancel());terminal=None
+        report['phases'].append(state(host,'configure-after',run))
         # Exercise an actual older public package as an idle upgrade fixture.
         report['phases'].append(state(host,'upgrade-baseline',run,timeout=330))
         terminal=Terminal(host,run,'install',private_logs/f'{host}-upgrade.log',report)

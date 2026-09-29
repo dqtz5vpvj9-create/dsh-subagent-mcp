@@ -11,7 +11,9 @@ platform installation jobs and both real Windows journeys passing.
 On fresh Windows, Linux and macOS CI machines, the packed npm command runs with
 isolated settings and no Codex or DeepSeek credentials. It must install, explain
 account readiness and the next step, then return to the shell. It must not open a
-Codex task. Repeating the command must have the same meaning. The test also runs
+Codex task. On Linux and macOS the first installation runs in a real terminal:
+the driver presses Enter at the optional hidden-key prompt and requires a normal
+process exit without Ctrl+C. Repeating the command must have the same meaning. The test also runs
 the suggested work command's help, checks account status and uninstalls. These
 jobs use real dependency packages and real service initialization. They do not
 validate a provider login or make model requests.
@@ -22,7 +24,9 @@ both make real model requests:
 
 1. Install the candidate and confirm that installation returns to the shell.
    Install the actual previous public release, `0.6.2`, while idle, then use the
-   candidate installation command to upgrade it.
+   candidate installation command to upgrade it. Run the public `configure`
+   command in the terminal, press Enter to cancel, and require a normal exit
+   with the existing provider settings untouched.
 2. Explicitly open ordinary Codex in a directory containing spaces and non-ASCII
    text. Give a natural-language task: ask DSH to write a delayed file, then ask
    Codex to read and check it. The prompt supplies no skill name, callback tool

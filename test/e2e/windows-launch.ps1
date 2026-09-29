@@ -1,4 +1,4 @@
-param([string]$Run, [ValidateSet('install','codex','permission-review')][string]$Action = 'install')
+param([string]$Run, [ValidateSet('install','configure','codex','permission-review')][string]$Action = 'install')
 $ErrorActionPreference = 'Stop'
 try {
     $env:TERM = 'xterm-256color'
@@ -9,6 +9,7 @@ try {
     $env:TMP = $env:TEMP
     Set-Location -LiteralPath (Join-Path $testRoot 'Project space 雪')
     $commandArguments = @('--yes', '--package', (Join-Path $userDirectory ('dsh-e2e-candidate-' + $Run + '.tgz')), '--', 'dsh-subagent-mcp')
+    if ($Action -eq 'configure') { $commandArguments += 'configure' }
     if ($Action -eq 'codex') { $commandArguments += 'codex' }
     if ($Action -eq 'permission-review') {
         $commandArguments += @('codex', '-a', 'on-request', '-c', 'mcp_servers.dsh_subagent.tools.dsh_start.approval_mode="prompt"')
