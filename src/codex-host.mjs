@@ -42,11 +42,17 @@ export async function prepareWindowsCodexDaemon(spec, env = process.env) {
     if (!response.ok) throw new Error(`Could not download the official Codex installer (HTTP ${response.status}).`);
     const script = join(directory, 'install.ps1');
     writeFileSync(script, await response.text());
-    const powershell = join(env.SystemRoot || env.SYSTEMROOT || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
+    const system32 = join(env.SystemRoot || env.SYSTEMROOT || 'C:\\Windows', 'System32');
+    const powershell = join(system32, 'WindowsPowerShell/v1.0/powershell.exe');
     const installerEnv = {...env, CODEX_INSTALL_DAEMON_ONLY: '1', CODEX_NON_INTERACTIVE: '1'};
     // SSH can inherit PowerShell 7's module path. Windows PowerShell must build
     // its own standard path so the official installer's Get-FileHash is present.
     for (const name of Object.keys(installerEnv)) if (name.toLowerCase() === 'psmodulepath') delete installerEnv[name];
+    // Git Bash can put GNU tar first; it treats C: archive paths as remote
+    // hosts. The official Windows installer needs the system's native tar.
+    const inheritedPath = Object.entries(env).find(([name]) => name.toLowerCase() === 'path')?.[1] || '';
+    for (const name of Object.keys(installerEnv)) if (name.toLowerCase() === 'path') delete installerEnv[name];
+    installerEnv.Path = system32 + ';' + inheritedPath;
     // Scope execution policy to this trusted installer process; no user or
     // machine policy is written, and enforced Group Policy still takes priority.
     await execute(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Release', '0.158.0'], {
