@@ -12,6 +12,7 @@ on:
         default: false
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: real-windows-release-acceptance
   cancel-in-progress: false
@@ -74,10 +75,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci --ignore-scripts
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-candidate
-          path: '${{ runner.temp }}/candidate'
+      - name: Download the accepted candidate on the trusted controller
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-candidate --dir "$RUNNER_TEMP/candidate"
       - name: Real Codex and DSH user journeys on win and dorm
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
