@@ -172,7 +172,7 @@ class Terminal:
         import re
         trust=TERMINAL_SPACE.join([r'1\.', 'Trust', 'and', 'continue'])+r'|Yes, I trust'
         overview='(?i)'+TERMINAL_SPACE.join(['Agent','command','center','Group:'])
-        footer=r'(?i)GPT-[A-Za-z0-9][A-Za-z0-9._-]*'+TERMINAL_SPACE+r'(?:xhigh|high|medium|low|minimal|none|max)\b'
+        footer=r'(?i)GPT-[A-Za-z0-9][A-Za-z0-9._-]*'+TERMINAL_SPACE+r'(?:default|xhigh|high|medium|low|minimal|none|max)\b'
         startup='';composer_seen=False;footer_seen=False;trusted=False
         project=f'dsh-release-acceptance{self.run}Projectspace雪'.casefold()
         deadline=time.monotonic()+180
