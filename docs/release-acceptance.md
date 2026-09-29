@@ -64,8 +64,13 @@ README walkthrough remains a separate review.
 
 ## Running the gate
 
-The trusted Linux controller needs Node.js 24+, GitHub CLI, Python with `pexpect`,
+The trusted Linux controller needs Node.js 24+, GitHub CLI, Python with `venv`,
 the official GitHub Actions runner, and working SSH aliases `win` and `dorm`.
+The workflow installs pinned `pexpect` and `pyte` dependencies into a temporary
+virtual environment. The driver renders the actual terminal screen, waits for
+the composer, and verifies the complete prompt before submitting it once.
+An incomplete prompt fails without submission. The known model-switch reminder
+is answered with “Keep current model” once; future reminders remain enabled.
 The Windows controller scripts use PowerShell 7. The acceptance hosts need their
 normal provider accounts configured and must be available for reinstalling the
 integration. Credentials and unrelated task history are preserved. An active

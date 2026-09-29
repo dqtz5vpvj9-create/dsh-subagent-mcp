@@ -80,10 +80,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-candidate --dir "$RUNNER_TEMP/candidate"
+      - name: Install the terminal acceptance driver
+        run: |
+          python3 -m venv "$RUNNER_TEMP/e2e-python"
+          "$RUNNER_TEMP/e2e-python/bin/python" -m pip install pexpect==4.9.0 ptyprocess==0.7.0 pyte==0.8.2 wcwidth==0.2.13
       - name: Real Codex and DSH user journeys on win and dorm
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          python3 test/e2e/windows-release.py --package "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results"
+          "$RUNNER_TEMP/e2e-python/bin/python" test/e2e/windows-release.py --package "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results"
       - name: Publish the accepted package
         if: inputs.publish
         run: |

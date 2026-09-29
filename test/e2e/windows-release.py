@@ -7,6 +7,7 @@ import argparse
 import concurrent.futures
 import json
 import os
+import re
 import signal
 from pathlib import Path
 import subprocess
@@ -15,6 +16,7 @@ import time
 import threading
 import uuid
 import pexpect
+import pyte
 
 ROOT = Path(__file__).resolve().parents[2]
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-o', 'LogLevel=ERROR',
@@ -24,6 +26,43 @@ PROCESSES=set()
 TRANSPORTS={}
 TERMINAL_SPACE=r'(?:\s|\x1b\[[0-?]*[ -/]*[@-~])*'
 APPROVAL=TERMINAL_SPACE.join(['Allow','the','dsh_subagent','MCP','server','to','run','tool'])+TERMINAL_SPACE+r'"(dsh_start|dsh_followup|dsh_watch|dsh_unwatch|dsh_interrupt)"'
+MODEL_FOOTER=r'(?i)GPT-[A-Za-z0-9][A-Za-z0-9._-]*\s*(?:default|xhigh|high|medium|low|minimal|none|max)\b'
+
+def compact(text):
+    return re.sub(r'\s+','',text)
+
+class TerminalView:
+    """Render the same ConPTY output a person sees, including cursor rewrites."""
+    def __init__(self,log):
+        self.log=log;self.screen=pyte.Screen(140,40);self.stream=pyte.Stream(self.screen)
+
+    def write(self,text):
+        self.log.write(text);self.stream.feed(text)
+
+    def flush(self):
+        self.log.flush()
+
+    def rows(self):
+        # Wide-character continuation cells can be empty during a redraw.
+        return [''.join(self.screen.buffer[y][x].data for x in range(self.screen.columns))
+                for y in range(self.screen.lines)]
+
+    def quota_prompt(self):
+        text=compact('\n'.join(self.rows()))
+        return all(part in text for part in ['Approachingratelimits',
+            'Switchtogpt-6-lunaforlowercreditusage?', '1.Switchtogpt-6-luna',
+            '2.Keepcurrentmodel', '3.Keepcurrentmodel(nevershowagain)', 'enterselect'])
+
+    def composer(self):
+        rows=self.rows()
+        footers=[i for i,row in enumerate(rows) if re.search(MODEL_FOOTER,row)]
+        if not footers or 'esc to interrupt' in '\n'.join(rows[-14:]):return None
+        end=footers[-1]
+        starts=[i for i,row in enumerate(rows[:end]) if row.lstrip().startswith('›')]
+        if not starts:return None
+        start=starts[-1]
+        text=rows[start].split('›',1)[1]+''.join(rows[start+1:end])
+        return '' if compact(text)=='AskCodextodoanything' else compact(text)
 
 def cancel_run(_signal, _frame):
     STOPPING.set()
@@ -101,14 +140,16 @@ class Terminal:
         self.child=pexpect.spawn(SSH[0],[*SSH[1:],*TRANSPORTS[host],'-tt',host,command],
             env={**os.environ,'TERM':'xterm-256color'},encoding='utf-8',codec_errors='replace',
             timeout=30,dimensions=(40,140))
-        self.log=logfile.open('w',encoding='utf-8');self.child.logfile_read=self.log
+        self.log=logfile.open('w',encoding='utf-8');self.view=TerminalView(self.log)
+        self.child.logfile_read=self.view
         self.logfile=logfile;self.report=report;self.action=action;self.run=run
         self.composer_ready=False
 
-    def event(self,timeout=2,deny=False):
+    def event(self,timeout=2,deny=False,allow_approval=True):
         event=self.child.expect(['\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT,APPROVAL],timeout=timeout)
         if event==0:self.child.send('\x1b[1;1R')
         elif event==3:
+            if not allow_approval:raise RuntimeError('An unexpected tool approval is covering the task composer; no prompt was submitted.')
             name=self.child.match.group(1)
             self.child.expect(TERMINAL_SPACE.join(['enter','to','submit']),timeout=30)
             if deny:self.child.send('\x1b')
@@ -206,11 +247,43 @@ class Terminal:
     def send(self,prompt):
         if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
         if not self.composer_ready:raise RuntimeError('Cannot submit a task before the dedicated project composer is ready.')
-        self.child.send('\x1b[200~'+prompt+'\x1b[201~');time.sleep(1)
+        self.wait_composer('')
+        self.child.send('\x1b[200~'+prompt+'\x1b[201~')
+        self.wait_composer(prompt)
         if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
         self.child.send('\r')
+        self.report.setdefault('inputChecks',[]).append({'promptCharacters':len(prompt),
+            'completePromptVisibleBeforeSubmit':True,'submissions':1})
         # The pending observer proves submission from this cwd's saved thread
         # and callback. Never press Enter again based on ambiguous UI text.
+
+    def wait_composer(self,expected):
+        deadline=time.monotonic()+30;matched_since=None;quota_answered=False
+        while time.monotonic()<deadline:
+            if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
+            if self.event(.25,allow_approval=False)==1:raise RuntimeError('Codex exited before the task could be submitted.')
+            if self.view.quota_prompt():
+                if expected:
+                    raise RuntimeError('The model reminder interrupted input; no prompt was submitted.')
+                if quota_answered:continue
+                # This public option retains the model for this reminder. A
+                # number activates it directly; Enter could reach the composer.
+                self.child.send('2');quota_answered=True;matched_since=None
+                self.report.setdefault('modelPrompts',[]).append({'prompt':'Approaching rate limits',
+                    'choice':'Keep current model once','changedModel':False,'disabledFutureReminders':False})
+                continue
+            rows=self.view.rows()
+            if any('Agent command center' in row for row in rows):
+                raise RuntimeError('Codex opened Agent command center; no task was selected or submitted.')
+            if re.search(r'\benter (?:select|submit|continue)\b|\besc back\b','\n'.join(rows[-14:])):
+                raise RuntimeError('An unexpected dialog is covering the task composer; no prompt was submitted.')
+            actual=self.view.composer()
+            if actual==compact(expected):
+                if matched_since is None:matched_since=time.monotonic()
+                elif time.monotonic()-matched_since>=2:return
+            else:matched_since=None
+        self.logfile.with_suffix('.screen.txt').write_text('\n'.join(self.view.rows()),encoding='utf-8')
+        raise RuntimeError('The terminal did not show the complete expected composer text; no Enter was sent. See the private screen snapshot.')
 
     def until(self,host,action,run,phase,deny=False):
         cancelled=threading.Event()
