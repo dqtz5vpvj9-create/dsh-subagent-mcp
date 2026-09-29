@@ -253,7 +253,7 @@ def acceptance(host,package,output,run):
             raise RuntimeError('The permission-refusal case did not exercise a real approval prompt.')
         report['phases'].append(rejected)
         report['phases'].append(terminal.leave());terminal=None
-        report['phases'].append(state(host,'cleanup',run))
+        report['phases'].append(state(host,'cleanup-success',run))
         report['phases'].append(state(host,'restart',run))
         report['ok']=True
     except Exception as error:
