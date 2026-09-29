@@ -109,9 +109,24 @@ class Terminal:
         return event
 
     def install(self):
+        save_prompt=TERMINAL_SPACE.join(['Save','the','DeepSeek','key','from','this','terminal','for','background',r'tasks\?',r'\[Y/n\]'])
+        missing_prompt=TERMINAL_SPACE.join(['DeepSeek','API','key',r'\(hidden;','press','Enter','to','configure',r'later\):'])
+        answered=set()
         deadline=time.monotonic()+600
         while time.monotonic()<deadline:
-            if self.event()==1:
+            if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
+            found=self.child.expect([r'\x1b\[6n',pexpect.EOF,pexpect.TIMEOUT,save_prompt,missing_prompt],timeout=2)
+            if found==0:self.child.send('\x1b[1;1R')
+            elif found in (3,4):
+                if found in answered:raise RuntimeError('Installation repeated an account prompt after it was answered.')
+                answered.add(found)
+                # Respond to the same public prompt a person sees. The existing
+                # key stays on the host; neither its value nor a fake key is sent.
+                self.child.send('y\r' if found==3 else '\r')
+                self.report.setdefault('accountPromptChoices',[]).append({
+                    'command':'install','prompt':'save existing terminal key' if found==3 else 'enter optional key',
+                    'choice':'yes' if found==3 else 'skip with Enter','keyValue':'[redacted]'})
+            elif found==1:
                 self.child.close();self.log.close()
                 text=clean_terminal(self.logfile.read_text(encoding='utf-8'))
                 if self.child.exitstatus!=0:raise RuntimeError('Installation did not return successfully: '+text[-2500:])
@@ -126,6 +141,7 @@ class Terminal:
         skipped=False
         deadline=time.monotonic()+90
         while time.monotonic()<deadline:
+            if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
             found=self.child.expect([prompt,r'\x1b\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=2)
             if found==0:
                 if skipped:raise RuntimeError('Configure repeated its key prompt after cancellation.')
@@ -147,12 +163,14 @@ class Terminal:
     def ready(self):
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
+            if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
             found=self.child.expect([r'Ask Codex to do anything',r'Yes, I trust',r'Continue anyway\?',
                 '\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=2)
             if found==0:
                 # Wait for the actual remote composer, not its startup animation.
                 until=time.monotonic()+5
                 while time.monotonic()<until:
+                    if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
                     if self.event(1)==1:raise RuntimeError('Codex exited during initialization.')
                 return
             if found==1:
