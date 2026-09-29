@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -37,7 +37,7 @@ process.exit(Number(process.env.LAUNCH_EXIT));
     assert.equal(result.error, undefined);
     assert.equal(result.status, scenario.code, result.stderr);
     const calls = readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    assert.deepEqual(calls, [{args: scenario.args, cwd: project}]);
+    assert.deepEqual(calls, [{args: scenario.args, cwd: realpathSync(project)}]);
     assert.deepEqual(JSON.parse(readFileSync(join(config, 'installation.json'), 'utf8')), record);
     assert.equal(existsSync(join(root, 'state', 'codex')), false);
     assert.doesNotMatch(result.stdout + result.stderr, /ws:\/\/|DSH_CODEX_TOKEN|First run:|Updating DSH/);
