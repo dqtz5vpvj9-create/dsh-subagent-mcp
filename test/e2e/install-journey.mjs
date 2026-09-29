@@ -38,7 +38,8 @@ try {
   assert.match(text, /Installation complete|Installed|already installed/i);
   assert.match(text, /npx -y dsh-subagent-mcp@latest codex/);
   assert.match(text, /dsh-subagent-mcp@latest login|codex login/);
-  assert.match(text, /DEEPSEEK_API_KEY|provider/i);
+  assert.match(text, /DeepSeek account: missing/i);
+  assert.match(text, /dsh-subagent-mcp@latest configure/);
   report.checks.push({journey: 'new user installs without credentials', returnedToShell: true,
     noWorkSessionStarted: true, explicitWorkCommand: true, accountNextStepsShown: true});
   run();
