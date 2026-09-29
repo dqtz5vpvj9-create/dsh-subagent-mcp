@@ -83,10 +83,10 @@ progress questions and cancellation.
 To inspect the execution history in DSH Web:
 
 ```sh
-npx -y dsh-subagent-mcp@latest dsh web
+npx -y dsh-subagent-mcp@latest dsh web --port 0
 ```
 
-Open the local URL printed by DSH. This uses the same DSH installation, history
+The system selects a free port. Open the local URL printed by DSH. This uses the same DSH installation, history
 and saved provider settings.
 
 ## Check the installation

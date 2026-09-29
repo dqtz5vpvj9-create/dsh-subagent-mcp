@@ -49,7 +49,7 @@ managed packages. History and saved provider settings are retained. See
 Open DSH Web with:
 
 ```sh
-npx -y dsh-subagent-mcp@latest dsh web
+npx -y dsh-subagent-mcp@latest dsh web --port 0
 ```
 
 In the workspace's **Claude Code / Codex 子代理** entry, open the subagent catalog
