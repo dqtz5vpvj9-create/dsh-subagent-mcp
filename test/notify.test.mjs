@@ -5,15 +5,44 @@ import {createInterface} from 'node:readline';
 import {mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {execFile} from 'node:child_process';
+import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {setTimeout as delay} from 'node:timers/promises';
 import {WebSocketServer} from 'ws';
 import {privateDirectory, temporaryDirectory, writeJson} from '../src/platform.mjs';
+import {saveNotificationFile} from '../src/notify.mjs';
 
 const exec = promisify(execFile);
 const script = fileURLToPath(new URL('../src/notify.mjs', import.meta.url));
 const thread = '01a0e5c5-cdae-7101-9d53-228035271cfe';
+
+async function lockReplacement(file, directory) {
+  const ps = join(directory, 'hold-file.ps1');
+  writeFileSync(ps, `param([string]$Target)
+$ErrorActionPreference = 'Stop'
+try {
+  $stream = [System.IO.File]::Open($Target, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+  try {
+    [Console]::WriteLine('locked')
+    [Console]::Out.Flush()
+    [Console]::ReadLine() | Out-Null
+  } finally { $stream.Dispose() }
+  exit 0
+} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
+`);
+  // The trusted fixture also runs on Windows hosts with Restricted policy.
+  const child = spawn('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', ps, file], {windowsHide: true});
+  let error = '';
+  child.stderr.on('data', chunk => {error += chunk;});
+  const closed = new Promise(resolve => child.once('close', resolve));
+  const lines = createInterface({input: child.stdout});
+  await new Promise((resolve, reject) => {
+    lines.once('line', line => line === 'locked' ? resolve() : reject(new Error(line)));
+    child.once('error', reject);
+    closed.then(code => reject(new Error(`File lock exited before readiness (${code}): ${error}`)));
+  });
+  return async () => {child.stdin.end('\n'); assert.equal(await closed, 0, error); lines.close();};
+}
 
 async function fixture(t) {
   const root = privateDirectory(mkdtempSync(join(temporaryDirectory(), 'dsh-node-notify-')));
@@ -85,6 +114,41 @@ test('Node listener detaches, waits once without timeout, and sends native compl
   f.complete('one'); await f.until(run.directory, 'delivered');
   const output = JSON.parse(f.calls.find(x => x.method === 'turn/start').params.toolOutput.output);
   assert.equal(output.answer, 'evidence'); assert.equal(output.result_path, join(run.directory, 'result.json'));
+});
+
+test('Windows receipt replacement recovers after a reader releases its handle without repeating delivery', {skip: process.platform !== 'win32'}, async t => {
+  const f = await fixture(t), run = await f.launch('locked');
+  const release = await lockReplacement(join(run.directory, 'callback.json'), run.directory);
+  try {
+    f.complete('locked');
+    const pending = join(run.directory, 'callback.json.pending');
+    for (let i = 0; i < 100 && !existsSync(pending); i++) await delay(20);
+    assert.ok(existsSync(pending), 'The acknowledged receipt must be retained while replacement is blocked');
+    await delay(250);
+    assert.equal(JSON.parse(readFileSync(pending, 'utf8')).delivery_receipt.turn_id, 'turn-1');
+    assert.equal(JSON.parse(readFileSync(join(run.directory, 'callback.json'), 'utf8')).status, 'watching');
+    assert.equal(f.calls.filter(x => x.method === 'turn/start').length, 1);
+  } finally {await release();}
+  const receipt = await f.until(run.directory, 'delivered');
+  assert.equal(receipt.delivery_receipt.turn_id, 'turn-1');
+  assert.equal(existsSync(join(run.directory, 'callback.json.pending')), false);
+  assert.equal(f.calls.filter(x => x.method === 'turn/start').length, 1);
+  assert.equal(f.requests.filter(x => x.method === 'tools/call').length, 1);
+});
+
+test('Windows replacement stops after its deadline and preserves the pending receipt', {skip: process.platform !== 'win32'}, async t => {
+  const root = mkdtempSync(join(temporaryDirectory(), 'dsh-receipt-lock-'));
+  t.after(() => rmSync(root, {recursive: true, force: true}));
+  const file = join(root, 'callback.json');
+  writeFileSync(file, JSON.stringify({status: 'watching'}));
+  const release = await lockReplacement(file, root);
+  try {
+    const start = Date.now();
+    await assert.rejects(saveNotificationFile(file, {status: 'delivered', delivery_receipt: {turn_id: 'turn-1'}}), error => ['EPERM', 'EACCES', 'EBUSY'].includes(error.code));
+    assert.ok(Date.now() - start < 5000, 'A held file must not cause an unbounded wait');
+    assert.equal(JSON.parse(readFileSync(file, 'utf8')).status, 'watching');
+    assert.equal(JSON.parse(readFileSync(file + '.pending', 'utf8')).delivery_receipt.turn_id, 'turn-1');
+  } finally {await release();}
 });
 
 test('independent listeners allow a fast task to return while another is pending', async t => {

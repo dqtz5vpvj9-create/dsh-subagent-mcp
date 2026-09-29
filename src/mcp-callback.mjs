@@ -23,7 +23,12 @@ export async function watchFromMcp(agent, extra) {
   if (file) {
     env.DSH_CODEX_CONNECTION = file;
   }
-  return registerCallback({agent, thread, delivery: 'tool-output', state: locations().state}, {env, temp: directory});
+  const receipt = await registerCallback({agent, thread, delivery: 'tool-output', state: locations().state}, {env, temp: directory});
+  if (receipt.status === 'watching') {
+    receipt.next_action = 'do_independent_work_or_end_response';
+    receipt.instructions = 'When only this result remains pending, end your current response in the final channel now. The callback will wake you for result acceptance. Do not keep the turn open with sleep, wait tools, or polling.';
+  }
+  return receipt;
 }
 
 export function unwatchFromMcp(agent, directory, extra) {

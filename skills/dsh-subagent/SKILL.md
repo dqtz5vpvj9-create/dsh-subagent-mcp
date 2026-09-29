@@ -31,7 +31,11 @@ will follow completion. Preserve these across context compaction.
 
 After `dsh_start` or an accepted `dsh_followup`, call `dsh_watch` with that
 `agent_id` once. It reads the calling Codex thread from MCP metadata and returns
-a `watching` receipt. Retain the receipt, then do independent work or end the turn.
+a `watching` receipt. Retain the receipt, then do any independent work. Once
+only the child's result is pending, end the current response in the **final
+channel immediately**. A short message can state that DSH is running and you
+will review its result. This suspends the parent until the registered callback
+starts the next turn; the delegated task remains yours to accept.
 The service owns the listener, so registering it needs no shell command or
 sandbox escalation. Completion arrives as native `dsh_completion` tool data.
 Use `dsh_unwatch` with the agent ID and directory containing the receipt's
@@ -59,10 +63,10 @@ submits `turn/start.toolOutput` with the answer and evidence path. This arrives
 as `dsh_completion` tool data in the active turn or wakes an idle parent. Waiting
 uses no model requests; each child can finish independently.
 
-Once registered, do independent work or yield the turn until completion.
-Avoid polling `dsh_wait`, `dsh_events`, or outer `functions.wait` and avoid
-heartbeat or receipt-only replies. Generic tool descriptions about pending
-waits apply when no callback has been registered.
+After registration, keep no parent wait running: neither `clock.sleep`, shell
+sleep, `dsh_wait`, nor an outer tool wait. Sleeping keeps the current turn open;
+ending the response lets the callback wake an idle parent. Generic instructions
+about keeping a wait pending apply only when no callback has been registered.
 
 On `dsh_completion`, use the inline answer and perform one consolidated artifact
 acceptance pass, then continue the authorized work. Read `result_path` when

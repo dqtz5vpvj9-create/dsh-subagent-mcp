@@ -150,6 +150,8 @@ if(action==='prepare') {
       const allItems=rollout(receipt.thread_id),items=allItems.slice(observed.lineStart);
       const delivery=items.findIndex(item=>item.type==='response_item'&&item.payload?.name==='dsh_completion');
       const idle=items.findIndex(item=>item.type==='event_msg'&&item.payload?.type==='task_complete');
+      if(delivery>=0)assert.ok(idle>=0&&idle<delivery,
+        'DSH completion arrived before the parent ended its delegation turn; the callback stayed in an active turn instead of waking an idle parent');
       if(action==='pending'&&receipt.status==='watching'&&idle>=0&&delivery<0) {
         if(phase==='first')assert.deepEqual(newIds,[receipt.agent_id],'The requested task must create exactly one actual agent');
         assert.equal(calls(items,'dsh_watch').length,1);
@@ -170,7 +172,9 @@ if(action==='prepare') {
       assert.equal(readFileSync(artifact,'utf8'),marker);
       const artifactMtime=statSync(artifact).mtimeMs,resultMtime=statSync(receipt.result_path).mtimeMs;
       assert.ok(artifactMtime<=resultMtime,'The parent must not create or repair the artifact after the DSH completion result');
-      if(action!=='accepted'||delivery<0)continue;
+      // The callback may already be visible while Windows retries committing
+      // its delivered receipt. Validate the acknowledged turn after that commit.
+      if(action!=='accepted'||delivery<0||receipt.status!=='delivered')continue;
       const after=items.slice(delivery+1);
       const readPair=after.filter(item=>artifactRead(item,phase+'-child.txt'))
         .map(call=>({call,output:outputFor(after,call)}))

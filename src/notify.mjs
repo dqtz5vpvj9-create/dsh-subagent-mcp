@@ -1,6 +1,8 @@
 import {fork} from 'node:child_process';
 import {parseArgs} from 'node:util';
-import {existsSync, mkdirSync, mkdtempSync, writeFileSync, renameSync, openSync, closeSync, watch} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, writeFileSync, openSync, closeSync, watch} from 'node:fs';
+import {rename} from 'node:fs/promises';
+import {setTimeout as delay} from 'node:timers/promises';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {codexCallback} from './codex-callback.mjs';
@@ -21,9 +23,21 @@ export function completionOutput(result, resultPath) {
   return output;
 }
 
-function save(path, value) {
+export async function saveNotificationFile(path, value) {
   writeFileSync(path + '.pending', JSON.stringify(value, null, 2) + '\n', {mode: 0o600});
-  renameSync(path + '.pending', path);
+  const deadline = Date.now() + 3000;
+  let backoff = 20;
+  for (;;) {
+    try {await rename(path + '.pending', path); return;}
+    catch (error) {
+      // Windows readers can briefly deny replacement. Retry only the file
+      // commit; the completed native callback must never be sent again.
+      const remaining = deadline - Date.now();
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || remaining <= 0) throw error;
+      await delay(Math.min(backoff, remaining));
+      backoff = Math.min(backoff * 2, 200);
+    }
+  }
 }
 
 export async function watchCompletion(args, ready = () => {}) {
@@ -43,17 +57,17 @@ export async function watchCompletion(args, ready = () => {}) {
       if (cancelled) throw new Error('Listener cancelled');
       // Exactly one request, with no timeout and no model-driven polling.
       const pending = client.request('tools/call', {name: 'dsh_wait', arguments: {agent_id: args.agent, legacy: true}});
-      receipt.status = 'watching'; save(receiptPath, receipt); ready(receipt); announced = true;
+      receipt.status = 'watching'; await saveNotificationFile(receiptPath, receipt); ready(receipt); announced = true;
       const reply = await pending;
       if (reply.isError) throw new Error(reply.content.map(x => x.text || '').join(' '));
       result = JSON.parse(reply.content.find(x => x.type === 'text').text);
       if (result.wait_outcome !== 'settled') throw new Error('Unbounded DSH wait returned without settling');
     } catch (error) {
-      if (cancelled) {receipt.status = 'cancelled'; save(receiptPath, receipt); if (!announced) ready(receipt); return;}
-      if (!announced) {receipt.status = 'setup_failed'; receipt.error = error.message; save(receiptPath, receipt); ready(receipt); return;}
+      if (cancelled) {receipt.status = 'cancelled'; await saveNotificationFile(receiptPath, receipt); if (!announced) ready(receipt); return;}
+      if (!announced) {receipt.status = 'setup_failed'; receipt.error = error.message; await saveNotificationFile(receiptPath, receipt); ready(receipt); return;}
       result = {agent_id: args.agent, status: 'watch_error', error: error.message};
     } finally {client?.close();}
-    save(resultPath, result); receipt.dsh_status = result.status;
+    await saveNotificationFile(resultPath, result); receipt.dsh_status = result.status;
     if (cancelled || existsSync(join(directory, 'cancel'))) receipt.status = 'cancelled';
     else if (['interrupted', 'closed'].includes(result.status)) receipt.status = 'stopped';
     else {
@@ -69,7 +83,7 @@ export async function watchCompletion(args, ready = () => {}) {
         }
       } catch (error) {receipt.status = 'delivery_failed'; receipt.error = error.message;}
     }
-    save(receiptPath, receipt);
+    await saveNotificationFile(receiptPath, receipt);
   } finally {observer.close(); process.removeListener('SIGTERM', cancel); process.removeListener('SIGINT', cancel);}
 }
 
