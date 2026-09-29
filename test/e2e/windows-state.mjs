@@ -186,9 +186,23 @@ if(action==='prepare') {
       assert.equal(calls(items,'dsh_watch').length,1,'One callback registration is required');
       assert.equal(calls(items,'dsh_start').length+calls(items,'dsh_followup').length,1,'The same task must not be delegated twice');
       const between=items.slice(idle+1,delivery);
-      assert.equal(between.filter(item=>item.type==='event_msg'&&item.payload?.type==='task_started').length,0,'The idle parent must not start another turn before completion arrives');
+      const callbackTurn=receipt.delivery_receipt?.turn_id;
+      assert.equal(typeof callbackTurn,'string','The native callback must acknowledge the turn it starts');
+      const wakeups=between.filter(item=>item.type==='event_msg'&&item.payload?.type==='task_started');
+      // Native turn/start records task_started before its dsh_completion input.
+      // Only that acknowledged callback turn may wake the idle parent.
+      assert.deepEqual(wakeups.map(item=>item.payload.turn_id),[callbackTurn],'Only the acknowledged completion callback may start a turn while the parent is idle');
+      assert.ok(resultMtime<=Date.parse(wakeups[0].timestamp),'The callback turn must not start before the DSH result exists');
+      const deliveryContext=items.slice(0,delivery).findLast(item=>item.type==='turn_context');
+      assert.equal(deliveryContext?.payload.turn_id,callbackTurn,'Completion must arrive in the acknowledged callback turn');
+      const modelActivity=between.filter(item=>isCall(item)||
+        item.type==='response_item'&&(item.payload?.type==='reasoning'||item.payload?.role==='assistant')||
+        item.type==='event_msg'&&['token_count','agent_message','agent_reasoning'].includes(item.payload?.type));
+      assert.equal(modelActivity.length,0,'The parent must not produce model output or tool calls before completion arrives');
+      const acceptanceTurn=after.find(item=>item.type==='event_msg'&&item.payload?.type==='task_complete'&&item.payload.last_agent_message?.includes(marker));
+      assert.equal(acceptanceTurn.payload.turn_id,callbackTurn,'Artifact acceptance must finish in the acknowledged callback turn');
       const report={ok:true,phase,host:process.env.COMPUTERNAME,node:process.version,version:record().version,
-        agentId:receipt.agent_id,threadId:receipt.thread_id,callback:receipt.status,nativeCallbackItems:delivered.length,
+        agentId:receipt.agent_id,threadId:receipt.thread_id,callback:receipt.status,callbackTurnId:callbackTurn,nativeCallbackItems:delivered.length,
         delegatedOnce:true,actualAgentIds:ids,childArtifactVerified:true,artifactPresentByDelivery:true,artifactMtime,resultMtime,
         parentReadArtifact:true,parentReadOutputVerified:true,readCallId:readPair.call.payload.call_id,parentCompleted:true};
       write(phase,report);console.log(JSON.stringify(report));process.exit(0);

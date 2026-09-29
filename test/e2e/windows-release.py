@@ -34,11 +34,18 @@ def remote(host, *args, timeout=180, cancel=None):
     command = subprocess.list2cmdline(list(args))
     process=subprocess.Popen([*SSH,*TRANSPORTS.get(host,[]),host,command],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     PROCESSES.add(process)
+    def discard_output():
+        # A ControlMaster may retain the pipe after this owned observer exits.
+        # Cancelled output is not needed: never wait for inherited pipe EOF.
+        if process.poll() is None:process.kill()
+        try:process.wait(timeout=5)
+        except subprocess.TimeoutExpired:pass
+        process.stdout.close();process.stderr.close()
     try:
         deadline=time.monotonic()+timeout
         while True:
             if cancel is not None and (cancel.is_set() or STOPPING.is_set()):
-                process.terminate();process.communicate(timeout=10)
+                discard_output()
                 raise RuntimeError('Acceptance observation cancelled.')
             remaining=deadline-time.monotonic()
             if remaining<=0:raise subprocess.TimeoutExpired(process.args,timeout)
@@ -48,7 +55,7 @@ def remote(host, *args, timeout=180, cancel=None):
         if process.returncode:raise subprocess.CalledProcessError(process.returncode,process.args,stdout,stderr)
         return stdout.strip()
     except subprocess.TimeoutExpired:
-        process.kill();process.communicate();raise
+        discard_output();raise
     finally:PROCESSES.discard(process)
 
 def upload(host, source, target):
@@ -95,7 +102,8 @@ class Terminal:
             env={**os.environ,'TERM':'xterm-256color'},encoding='utf-8',codec_errors='replace',
             timeout=30,dimensions=(40,140))
         self.log=logfile.open('w',encoding='utf-8');self.child.logfile_read=self.log
-        self.logfile=logfile;self.report=report;self.action=action
+        self.logfile=logfile;self.report=report;self.action=action;self.run=run
+        self.composer_ready=False
 
     def event(self,timeout=2,deny=False):
         event=self.child.expect(['\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT,APPROVAL],timeout=timeout)
@@ -161,33 +169,48 @@ class Terminal:
         raise RuntimeError('Configure kept the terminal open after Enter cancellation.')
 
     def ready(self):
+        import re
+        trust=TERMINAL_SPACE.join([r'1\.', 'Trust', 'and', 'continue'])+r'|Yes, I trust'
+        overview='(?i)'+TERMINAL_SPACE.join(['Agent','command','center','Group:'])
+        footer=r'(?i)GPT-[A-Za-z0-9][A-Za-z0-9._-]*'+TERMINAL_SPACE+r'(?:xhigh|high|medium|low|minimal|none|max)\b'
+        startup='';composer_seen=False;footer_seen=False;trusted=False
+        project=f'dsh-release-acceptance{self.run}Projectspace雪'.casefold()
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
             if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
-            found=self.child.expect([r'Ask Codex to do anything',r'Yes, I trust',r'Continue anyway\?',
-                '\x1b\\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=2)
+            found=self.child.expect([overview,trust,r'Ask Codex to do anything',footer,
+                r'Continue anyway\?',r'\x1b\[6n',pexpect.EOF,pexpect.TIMEOUT],timeout=2)
+            startup+=self.child.before
+            if isinstance(self.child.after,str):startup+=self.child.after
+            own_project=project in re.sub(r'[\s/\\]','',clean_terminal(startup)).casefold()
             if found==0:
-                # Wait for the actual remote composer, not its startup animation.
-                until=time.monotonic()+5
-                while time.monotonic()<until:
-                    if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
-                    if self.event(1)==1:raise RuntimeError('Codex exited during initialization.')
-                return
-            if found==1:
-                self.child.send('1\r');self.report.setdefault('workspacePrompts',[]).append('Trusted the dedicated acceptance directory')
-            elif found==2:
+                raise RuntimeError('Codex opened Agent command center instead of the dedicated project composer; no task was selected.')
+            elif found==1:
+                if not own_project:raise RuntimeError('The trust prompt did not identify this run\'s dedicated acceptance directory.')
+                if trusted:raise RuntimeError('Codex repeated the folder trust prompt after it was answered.')
+                self.child.send('1\r');trusted=True;footer_seen=False
+                self.report.setdefault('workspacePrompts',[]).append('Trusted the dedicated acceptance directory once')
+            elif found==2:composer_seen=True
+            elif found==3:footer_seen=True
+            elif found==4:
                 raise RuntimeError('Codex requested an unexplained Continue anyway confirmation; review the private transcript.')
-            elif found==3:self.child.send('\x1b[1;1R')
-            elif found==4:raise RuntimeError('The explicit work command exited before opening Codex.')
+            elif found==5:self.child.send('\x1b[1;1R')
+            elif found==6:raise RuntimeError('The explicit work command exited before opening Codex.')
+            # The loading screen also says "Ask Codex". Only the initialized
+            # model/effort footer and this run's cwd establish a usable composer.
+            if composer_seen and footer_seen and own_project:
+                self.composer_ready=True
+                return
         raise RuntimeError('The explicit work command did not show a usable composer.')
 
     def send(self,prompt):
-        self.child.send('\x1b[200~'+prompt+'\x1b[201~');time.sleep(1);self.child.send('\r')
-        started=self.child.expect([r'Working',r'esc to interrupt',r'Calling',pexpect.EOF,pexpect.TIMEOUT],timeout=10)
-        if started==4:
-            self.child.send('\r')
-            started=self.child.expect([r'Working',r'esc to interrupt',r'Calling',pexpect.EOF],timeout=60)
-        if started==3:raise RuntimeError('Codex exited before accepting the user request.')
+        if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
+        if not self.composer_ready:raise RuntimeError('Cannot submit a task before the dedicated project composer is ready.')
+        self.child.send('\x1b[200~'+prompt+'\x1b[201~');time.sleep(1)
+        if STOPPING.is_set():raise RuntimeError('Acceptance cancelled.')
+        self.child.send('\r')
+        # The pending observer proves submission from this cwd's saved thread
+        # and callback. Never press Enter again based on ambiguous UI text.
 
     def until(self,host,action,run,phase,deny=False):
         cancelled=threading.Event()
@@ -218,7 +241,7 @@ class Terminal:
 def natural_task(run,phase,seconds):
     marker=f'DSH_E2E_{run}_{phase}'
     return (f'请让 DSH 在后台处理当前项目中的这件事：等待 {seconds} 秒，然后把 '
-        f'{marker} 原样写入 {phase}-child.txt。完成后请你读取这个文件，检查内容，并告诉我实际读到了什么。')
+        f'{marker} 原样写入 {phase}-child.txt，不要附加其他字符或换行。完成后请你读取这个文件，检查内容，并告诉我实际读到了什么。')
 
 def acceptance(host,package,output,run):
     report={'host':host,'run':run,'ok':False,'phases':[],

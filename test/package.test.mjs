@@ -33,6 +33,7 @@ else if(a[0]==='mcp'&&a[1]==='add'){
  const i=a.indexOf('--');writeFileSync(path,JSON.stringify({transport:{command:a[i+1],args:a.slice(i+2)}}));
 }else if(a[0]==='mcp'&&a[1]==='list')console.log(JSON.stringify(existsSync(path)?[{name:'dsh_subagent',...JSON.parse(readFileSync(path,'utf8'))}]:[]));
 else if(a[0]==='mcp'&&a[1]==='remove')unlinkSync(path);
+else if(a[0]==='app-server'&&a[1]==='daemon'&&a[2]==='version')console.log(JSON.stringify({status:'running',managedCodexVersion:'0.158.0'}));
 else if(a[0]==='app-server'){
  const endpoint=new URL(a[a.indexOf('--listen')+1]);
  const token=readFileSync(a[a.indexOf('--ws-token-file')+1],'utf8').trim();

@@ -54,7 +54,7 @@ export function nativeServiceConflict(record, {home = homedir(), config = instal
     // Use the Windows-bundled PowerShell 5.1 and Task Scheduler API: schtasks
     // output can use a console code page even when its XML declares UTF-16.
     const script = fileURLToPath(new URL('../scripts/read-windows-task.ps1', import.meta.url));
-    const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script, '-TaskName', label],
+    const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-TaskName', label],
       {windowsHide: true, encoding: 'utf8'});
     if (result.status === 3) return false;
     if (result.error || result.status !== 0) throw new Error('Cannot inspect the login service: ' + (result.error?.message || result.stderr.trim()));

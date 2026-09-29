@@ -173,6 +173,10 @@ export async function setup(argv, {source = false, launching = false} = {}) {
   mkdirSync(paths.codex, {recursive: true, mode: 0o700});
   console.log(`DSH Subagent MCP ${version()} · ${process.platform}\nPreparing installation…`);
   const dependencies = ensureDependencies(!args['no-install-deps']);
+  if (process.platform === 'win32') {
+    console.log('Preparing Codex background support…');
+    await (await import('./codex-host.mjs')).prepareWindowsCodexDaemon(dependencies.codex);
+  }
   const oldRegistration = codexRegistration(dependencies.codex);
   if (oldRegistration?.transport?.url) throw new Error('Codex already has a remote MCP server named dsh_subagent. Rename it before installing this local bridge.');
   const oldSkill = ownsSkill() ? realpathSync(skillTarget()) : null;
