@@ -1,7 +1,8 @@
 """Real terminal -> npm package -> Codex -> DSH -> native callback -> artifact.
 
 Runs on the trusted SSH controller. Neither model is mocked. Credentials stay on
-the acceptance hosts. Public artifacts contain only assertion results and IDs.
+the acceptance hosts. Detailed reports stay on that controller; console output
+contains only fixed progress messages and aggregate outcomes.
 """
 import argparse
 import concurrent.futures
@@ -98,7 +99,8 @@ def remote(host, *args, timeout=180, cancel=None):
     finally:PROCESSES.discard(process)
 
 def upload(host, source, target):
-    subprocess.run(['scp','-q','-o','ConnectTimeout=20',*TRANSPORTS.get(host,[]),str(source),f'{host}:{target}'],check=True,timeout=120)
+    subprocess.run(['scp','-q','-o','ConnectTimeout=20',*TRANSPORTS.get(host,[]),str(source),f'{host}:{target}'],
+                   check=True,timeout=120,text=True,capture_output=True)
 
 def connect_host(host, directory):
     options=['-o','ControlPath='+str(directory/('ssh-'+host))]
@@ -122,7 +124,7 @@ def observe(host, action, run, phase, thread=None, cancel=None):
         except subprocess.CalledProcessError as error:
             if error.returncode != 255 or attempt == 2:
                 raise RuntimeError(f'{host} {action} observer failed: {error.stderr.strip()}') from error
-            print(f'{host}: reconnecting the read-only SSH observer',flush=True)
+            print('Reconnecting the acceptance observer.',flush=True)
 
 def state(host, action, run, phase='first', thread=None, timeout=180):
     return json.loads(remote(host,'node','dsh-e2e-state.mjs',action,run,phase,
@@ -331,7 +333,7 @@ def acceptance(host,package,output,run):
         state(host,'prepare',run)
         terminal=Terminal(host,run,'install',private_logs/f'{host}-install.log',report)
         report['phases'].append(terminal.install());terminal=None
-        print(f'{host}: installation returned to the shell with a public next step',flush=True)
+        print('Windows installation returned to the shell with a public next step.',flush=True)
         state(host,'configure-before',run)
         terminal=Terminal(host,run,'configure',private_logs/f'{host}-configure-cancel.log',report)
         report['phases'].append(terminal.configure_cancel());terminal=None
@@ -347,7 +349,7 @@ def acceptance(host,package,output,run):
         report['phases'].append(pending);thread=pending['threadId']
         accepted=terminal.until(host,'accepted',run,'first')
         report['phases'].append(accepted)
-        print(f'{host}: natural task delegated; native completion delivered; parent read and checked the artifact',flush=True)
+        print('Windows task delegation, completion callback, and artifact review passed.',flush=True)
         # A normal follow-up retains DSH's existing persistent conversation.
         state(host,'begin',run,'followup',thread)
         terminal.send('继续使用刚才的 DSH 子代理。'+natural_task(run,'followup',30))
@@ -385,17 +387,30 @@ def acceptance(host,package,output,run):
             subprocess.run([*SSH,*TRANSPORTS[host],'-O','exit',host],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
     return report
 
+def public_summary(reports):
+    # Construct public output from counts, never from report strings or errors.
+    passed=sum(report.get('ok') is True for report in reports)
+    return {'platform':'Windows','environments':len(reports),'passed':passed,
+            'failed':len(reports)-passed,'ok':bool(reports) and passed==len(reports)}
+
 if __name__=='__main__':
     signal.signal(signal.SIGINT,cancel_run);signal.signal(signal.SIGTERM,cancel_run)
     parser=argparse.ArgumentParser()
     parser.add_argument('--package',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
-    parser.add_argument('--hosts',nargs='+',default=['win','dorm'])
-    args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=True,mode=0o700)
+    parser.add_argument('--hosts',nargs='+')
+    args=parser.parse_args()
+    if args.hosts is None:
+        try:args.hosts=json.loads(os.environ.get('DSH_E2E_HOSTS','[]'))
+        except ValueError:parser.error('Configure acceptance hosts with --hosts or the private controller environment.')
+    if not isinstance(args.hosts,list) or not args.hosts or not all(isinstance(host,str) and host for host in args.hosts):
+        parser.error('Configure acceptance hosts with --hosts or the private controller environment.')
+    args.output.mkdir(parents=True,exist_ok=True,mode=0o700)
     run='ci-'+uuid.uuid4().hex[:12]
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(args.hosts)) as pool:
         reports=list(pool.map(lambda host:acceptance(host,args.package,args.output,run),args.hosts))
     summary={'ok':all(report['ok'] for report in reports),'hosts':reports}
     (args.output/'summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')
-    print(json.dumps(summary,indent=2),flush=True)
+    print(json.dumps(public_summary(reports)),flush=True)
+    print('Detailed acceptance reports remain private on the trusted controller.',flush=True)
     raise SystemExit(0 if summary['ok'] else 1)

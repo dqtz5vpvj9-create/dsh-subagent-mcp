@@ -18,8 +18,8 @@ the suggested work command's help, checks account status and uninstalls. These
 jobs use real dependency packages and real service initialization. They do not
 validate a provider login or make model requests.
 
-On `win` and `dorm`, the controller follows the public commands in a real Windows
-terminal. These two machines already have working accounts. Codex and DeepSeek
+On the configured Windows test hosts, the controller follows the public commands
+in a real terminal. These machines already have working accounts. Codex and DeepSeek
 both make real model requests:
 
 1. Install the candidate and confirm that installation returns to the shell.
@@ -65,7 +65,9 @@ README walkthrough remains a separate review.
 ## Running the gate
 
 The trusted Linux controller needs Node.js 24+, GitHub CLI, Python with `venv`,
-the official GitHub Actions runner, and working SSH aliases `win` and `dorm`.
+the official GitHub Actions runner, and SSH access to the selected Windows test hosts.
+Pass their locally configured aliases with `--hosts`; they are not stored in the
+workflow or sent as workflow inputs.
 The workflow installs pinned `pexpect` and `pyte` dependencies into a temporary
 virtual environment. The driver renders the actual terminal screen, waits for
 the composer, and verifies the complete prompt before submitting it once.
@@ -77,7 +79,7 @@ integration. Credentials and unrelated task history are preserved. An active
 unrelated task prevents preparation rather than being interrupted.
 
 ```sh
-python3 test/e2e/dispatch.py --runner /path/to/actions-runner
+python3 test/e2e/dispatch.py --runner /path/to/actions-runner --hosts windows-test-1 windows-test-2
 ```
 
 Add `--publish` to publish after every gate succeeds. The helper registers a
@@ -85,8 +87,7 @@ one-job runner with a unique label and dispatches the workflow from `main`.
 The runner waits while GitHub-hosted installation jobs finish. Pull requests
 cannot dispatch this workflow with its trusted host access.
 
-GitHub artifacts contain the installation reports and
-`real-codex-dsh-acceptance` assertion reports. Terminal transcripts stay private
-on the controller under `/mnt/cache/data-cache/dsh-release-e2e`. Reports identify
-which user actions were exercised and where a failed journey stopped. They
-contain no account credentials, callback tokens or private terminal transcript.
+Detailed real-model reports, terminal transcripts and diagnostics stay on the
+trusted controller. They are internal records and are not release assets or
+public CI artifacts. Public CI output contains aggregate pass/fail results;
+hostnames, local paths, session identifiers and raw errors stay private.

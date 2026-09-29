@@ -73,31 +73,49 @@ jobs:
     runs-on: [self-hosted, '${{ inputs.runner_label }}']
     timeout-minutes: 60
     steps:
+      - name: Mask private controller paths before checkout
+        run: |
+          for private_path in "$HOME" "$RUNNER_TEMP" "$RUNNER_WORKSPACE" "$(dirname "$RUNNER_WORKSPACE")"; do
+            if [ -n "$private_path" ]; then
+              printf '::add-mask::%s\n' "$private_path"
+            fi
+          done
       - uses: actions/checkout@v4
-      - run: npm ci --ignore-scripts
+      - name: Prepare dependencies on the trusted controller
+        run: |
+          umask 077
+          echo 'Detailed command diagnostics remain private on the trusted controller.'
+          npm ci --ignore-scripts >"$RUNNER_TEMP/e2e-dependencies.log" 2>&1
       - name: Download the accepted candidate on the trusted controller
         timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-candidate --dir "$RUNNER_TEMP/candidate"
+        run: |
+          umask 077
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name release-candidate --dir "$RUNNER_TEMP/candidate" >"$RUNNER_TEMP/e2e-download.log" 2>&1
       - name: Install the terminal acceptance driver
         run: |
-          python3 -m venv "$RUNNER_TEMP/e2e-python"
-          "$RUNNER_TEMP/e2e-python/bin/python" -m pip install pexpect==4.9.0 ptyprocess==0.7.0 pyte==0.8.2 wcwidth==0.2.13
-      - name: Real Codex and DSH user journeys on win and dorm
+          umask 077
+          python3 -m venv "$RUNNER_TEMP/e2e-python" >"$RUNNER_TEMP/e2e-python.log" 2>&1
+          "$RUNNER_TEMP/e2e-python/bin/python" -m pip install pexpect==4.9.0 ptyprocess==0.7.0 pyte==0.8.2 wcwidth==0.2.13 >>"$RUNNER_TEMP/e2e-python.log" 2>&1
+      - name: Real Codex and DSH user journeys on configured Windows hosts
         run: |
-          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          "$RUNNER_TEMP/e2e-python/bin/python" test/e2e/windows-release.py --package "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results"
+          umask 077
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version' 2>"$RUNNER_TEMP/e2e-version.log")
+          if "$RUNNER_TEMP/e2e-python/bin/python" test/e2e/windows-release.py --package "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --output "$RUNNER_TEMP/e2e-results" >"$RUNNER_TEMP/e2e-driver.log" 2>&1; then
+            echo 'Windows end-to-end acceptance passed. Detailed reports remain private on the trusted controller.'
+          else
+            echo 'Windows end-to-end acceptance failed. Inspect the private report on the trusted controller.'
+            exit 1
+          fi
       - name: Publish the accepted package
         if: inputs.publish
         run: |
-          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          npm publish "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --access public
-      - name: Publish assertion evidence
-        if: always()
-        timeout-minutes: 3
-        uses: actions/upload-artifact@v4
-        with:
-          name: real-codex-dsh-acceptance
-          path: '${{ runner.temp }}/e2e-results/*.json'
-          if-no-files-found: error
+          umask 077
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version' 2>"$RUNNER_TEMP/e2e-version.log")
+          if npm publish "$RUNNER_TEMP/candidate/dsh-subagent-mcp-$version.tgz" --access public >"$RUNNER_TEMP/e2e-publication.log" 2>&1; then
+            echo 'The accepted package was published.'
+          else
+            echo 'Package publication failed. Inspect private controller diagnostics.'
+            exit 1
+          fi

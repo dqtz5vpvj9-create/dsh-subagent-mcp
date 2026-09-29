@@ -1,7 +1,7 @@
 """Dispatch the trusted main-branch workflow on a one-job SSH controller.
 
 Install the official Linux GitHub Actions runner in --runner before calling.
-The controller needs SSH aliases win/dorm and Python pexpect. No model or SSH
+The controller needs configured Windows SSH targets and Python. No model or SSH
 credentials are uploaded to GitHub. The runner deregisters after its one job.
 """
 import argparse
@@ -13,6 +13,7 @@ from pathlib import Path
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--runner',type=Path,required=True)
+parser.add_argument('--hosts',nargs='+',required=True,help='Windows SSH targets configured on this controller')
 parser.add_argument('--publish',action='store_true')
 args=parser.parse_args()
 repo='dqtz5vpvj9-create/dsh-subagent-mcp'
@@ -26,7 +27,7 @@ configured.check_returncode()
 subprocess.run(['gh','workflow','run','release-e2e.yml','--repo',repo,'--ref','main','-f','runner_label='+label,
     '-f','publish='+str(args.publish).lower()],check=True)
 print('Dispatched real end-to-end CI with '+label,flush=True)
-runner_env={**os.environ,'DOTNET_SYSTEM_NET_DISABLEIPV6':'1',
+runner_env={**os.environ,'DSH_E2E_HOSTS':json.dumps(args.hosts),'DOTNET_SYSTEM_NET_DISABLEIPV6':'1',
     'DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2SUPPORT':'0',
     'NODE_OPTIONS':(os.environ.get('NODE_OPTIONS','')+' --dns-result-order=ipv4first').strip()}
 raise SystemExit(subprocess.call([str(args.runner/'run.sh')],cwd=args.runner,env=runner_env))
