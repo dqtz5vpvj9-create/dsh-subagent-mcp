@@ -29,7 +29,7 @@ test('independent answers, progress cursors, and busy followups',async t=>{
 test('interrupt preserves session and clears prior completion before followup',async t=>{
   const{m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();const rt=m.live.get(a.id);
   await m.interrupt(a.id);assert.equal(m.get(a.id).status,'interrupted');
-  await m.followup(a.id,'B');assert.equal(m.live.get(a.id),rt);assert.equal(m.get(a.id).answer,'');rt.finish('B');assert.equal(m.get(a.id).status,'completed');
+  await m.followup(a.id,'B');assert.notEqual(m.live.get(a.id),rt);assert.equal(m.live.get(a.id).calls[0][1].resume,true);assert.equal(m.get(a.id).answer,'');m.live.get(a.id).finish('B');assert.equal(m.get(a.id).status,'completed');
 });
 test('max-token termination is not reported as completed',async t=>{
   const{m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();m.live.get(a.id).finish('partial','max-tokens');assert.equal(m.get(a.id).status,'error');assert.equal(m.get(a.id).finish_reason.kind,'max-tokens');
@@ -88,7 +88,8 @@ test('completion releases the waiting parent, which continues in the same sessio
  m.live.get(a.id).finish('first result');
  const resumed=await parent;
  assert.equal(resumed.id,a.id);assert.equal(resumed.status,'running');
- assert.equal(m.live.get(a.id).calls.filter(([method])=>method==='session/prompt').length,2);
+ assert.equal(m.live.get(a.id).calls.filter(([method])=>method==='session/prompt').length,1);
+ assert.equal(m.live.get(a.id).calls[0][1].resume,true);
  assert.equal(m.listenerCount('state:'+a.id),0);
 });
 test('timeout remains pending work and completion between waits is not lost',async t=>{
@@ -262,3 +263,14 @@ test('agents of one workspace share a virtual parent and never claim one another
   assert.notEqual(initialize(c.id).parent,parent);
   assert.equal(m.parentFor(dir),parent,'the mint is stable across calls');
 });
+
+ test('settled runtimes are released without closing the conversation', async t=>{
+ const {m,dir}=setup(t);const a=await m.start({cwd:dir,task:'A'});await tick();
+ const rt=m.live.get(a.id);rt.finish('saved answer');await tick();
+ assert.equal(m.live.has(a.id),false);assert.equal(m.get(a.id).status,'completed');
+ assert.equal(m.get(a.id).answer,'saved answer');
+ assert.ok(rt.calls.some(([method])=>method==='session/checkpoint'));
+ await m.followup(a.id,'B');assert.notEqual(m.live.get(a.id),rt);
+ assert.equal(m.live.get(a.id).calls[0][1].resume,true);
+ assert.equal((await m.release(a.id)).released,false);assert.equal(m.get(a.id).status,'running');
+ });

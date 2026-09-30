@@ -46,6 +46,32 @@ managed packages. History and saved provider settings are retained. See
 
 ## Inspect DSH work
 
+Manage subagents directly from your terminal:
+
+```sh
+npx -y dsh-subagent-mcp@latest agents list
+npx -y dsh-subagent-mcp@latest agents ps
+npx -y dsh-subagent-mcp@latest agents show AGENT_ID
+npx -y dsh-subagent-mcp@latest agents result AGENT_ID
+npx -y dsh-subagent-mcp@latest agents events AGENT_ID --progress
+npx -y dsh-subagent-mcp@latest agents start --task "Inspect this project and report back" --permission read-only
+npx -y dsh-subagent-mcp@latest agents wait AGENT_ID
+npx -y dsh-subagent-mcp@latest agents followup AGENT_ID --task "Check the first finding"
+npx -y dsh-subagent-mcp@latest agents interrupt AGENT_ID
+npx -y dsh-subagent-mcp@latest agents gc
+```
+
+`agents --help` lists all commands. IDs accept unique prefixes; `--json` provides
+machine-readable output. `wait` holds one connection until the task settles.
+Terminal tasks do not automatically notify a Codex parent.
+
+Finished and interrupted bridge tasks save their conversation and automatically
+release their runtime. Results remain readable, and `followup` restores the same
+DSH session. `agents ps` lists resident runtime PIDs. `agents gc` releases idle
+runtimes without stopping active tasks or deleting history. `agents release ID`
+does the same for one agent. `agents close ID` permanently closes that bridge
+agent; external Web agents are only detached and keep running in their own host.
+
 Open DSH Web with:
 
 ```sh

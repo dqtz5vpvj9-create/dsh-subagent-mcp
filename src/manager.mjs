@@ -213,7 +213,7 @@ export class Manager extends EventEmitter {
       else a.status=settledStatus(a.finish_reason);
       if(a.status==='completed')a.last_completed_answer=a.answer;
       this.save(a); this.event(id,method,p);
-      if(p.status==='idle') this.live.get(id)?.request('session/checkpoint',{sessionId:id}).catch(e=>this.event(id,'checkpoint/error',{message:e.message}));
+      if(p.status==='idle') this.release(id).catch(e=>this.event(id,'runtime/release-error',{message:e.message}));
     }
   }
   async start({task,cwd,name,model='deepseek-flash',provider='deepseek-official',effort='max',permission='workspace-write',preset='standard'}) {
@@ -232,7 +232,7 @@ export class Manager extends EventEmitter {
     a=this.get(id);a.status='running';this.save(a);
     let receipt;
     try {receipt=await rt.request('session/prompt',{sessionId:id,contentBlocks:[{type:'text',text:task}]});}
-    catch(e){a=this.get(id);a.status='error';a.error=e.message;this.save(a);throw e;}
+    catch(e){a=this.get(id);a.status='error';a.error=e.message;this.save(a);await rt.close();this.live.delete(id);throw e;}
     a=this.get(id);a.persisted=true;a.message_id=receipt.messageId;this.save(a);
     this.event(id,'bridge/prompt',{message_id:receipt.messageId,task});
     return a;
@@ -276,6 +276,21 @@ export class Manager extends EventEmitter {
     if(this.get(id).external)return this.external.close(id);
     const rt=this.live.get(id);if(rt)await rt.close();
     this.live.delete(id);const a=this.get(id);a.status='closed';this.save(a);return a;
+  });}
+  release(id) {return this.serial(id,async()=>{
+    const a=this.get(id);
+    if(a.external)throw new Error('External Web sessions own their runtimes; use close to detach the observer.');
+    if(ACTIVE.includes(a.status))return {agent_id:id,released:false,status:a.status};
+    const rt=this.live.get(id);
+    if(rt) {
+      try {await rt.request('session/checkpoint',{sessionId:id});}
+      finally {
+        try {await rt.close();}
+        finally {this.live.delete(id);}
+      }
+      this.event(id,'runtime/released',{});
+    }
+    return {agent_id:id,released:Boolean(rt),status:this.get(id).status};
   });}
   async shutdown() {
     if(this.shutdownTask)return this.shutdownTask;

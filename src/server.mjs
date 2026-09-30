@@ -57,6 +57,7 @@ export function makeServer(manager) {
   register('dsh_followup','Continue an idle DSH agent with its original conversation, for more work on the same task. In Codex, call dsh_watch for this turn; default delivery is turn/start.toolOutput. Context accumulates across follow-ups; start a new agent for unrelated work. Busy agents must be interrupted first. Also resumes persisted sessions after service restart.',{...id,task:z.string().min(1),legacy:z.boolean().default(false)},a=>manager.followup(a.agent_id,a.task).then(value=>a.legacy?value:receipt(value,'followup')));
   register('dsh_interrupt','Cancel current execution and queued input; return only after DSH reaches idle. Keeps conversation and any files already changed.',{...id,legacy:z.boolean().default(false)},a=>manager.interrupt(a.agent_id).then(value=>a.legacy?value:status(value)));
   register('dsh_close','Release an agent runtime and mark it closed. For external Web sessions, only detach the bridge observer; the Web session keeps running. Retains history and files.',{...id,legacy:z.boolean().default(false)},a=>manager.close(a.agent_id).then(value=>a.legacy?value:status(value)));
+  register('dsh_release','Release an idle bridge runtime while preserving its status, history and ability to follow up. Active tasks are left running.',id,a=>manager.release(a.agent_id));
   register('dsh_wait','Await completion with no timeout by default. A completed settled response contains the final answer and no streaming partial text; repeated calls return the same result. Use legacy:true for the old complete state payload.',{...id,seconds:z.number().min(0).max(2147483.647).optional(),legacy:z.boolean().default(false)},async(a,extra)=>{await observe(a.agent_id);return manager.wait(a.agent_id,a.seconds,extra.signal).then(value=>projectWait(value,{full:a.legacy}));},true);
   return server;
 }
@@ -142,7 +143,7 @@ export async function main(){
             .catch(error=>socket.end(JSON.stringify({error:error.message})+'\n'));
           socket.resume();
         }
-        else if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
+        else if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),runtimes:[...manager.live].map(([id,rt])=>({id,pid:rt.child?.pid,status:manager.get(id).status})),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
         else if(first.bridge_control==='stop') {
           if(active.length&&!first.force)socket.end(JSON.stringify({error:'Active DSH tasks are running. Finish them first, or use stop --force to interrupt them.'})+'\n');
           else socket.end('{"stopping":true}\n',()=>{stop().catch(console.error);});

@@ -89,7 +89,16 @@ Assigning tasks and reviewing results still consume Codex tokens; DeepSeek usage
 
 Each workspace has a **Claude Code / Codex 子代理** entry in DSH Web. Open its subagent catalog to inspect individual conversations and traces without filling the sidebar with every delegated run.
 
-The browser reads persisted history, so it can lag and its running indicators are not authoritative for bridge-owned agents. Ask Codex for live status or tool activity through MCP. Follow-ups and cancellation also go through the bridge.
+The browser reads persisted history, so it can lag and its running indicators are not authoritative for bridge-owned agents. Ask Codex for live status, or manage tasks from your terminal:
+
+```sh
+npx -y dsh-subagent-mcp@latest agents list
+npx -y dsh-subagent-mcp@latest agents ps
+npx -y dsh-subagent-mcp@latest agents result AGENT_ID
+npx -y dsh-subagent-mcp@latest agents followup AGENT_ID --task "Check the first finding"
+```
+
+Finished tasks save their session and release their process automatically. Follow-ups restore the same conversation. See [all management commands](docs/operations.md#inspect-dsh-work), including cancellation and idle-runtime cleanup.
 
 Already working in an ordinary DSH Web session? Attach it with `dsh_attach` and continue that same conversation. Details are in the [usage guide](docs/usage.md).
 

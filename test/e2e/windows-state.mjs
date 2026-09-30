@@ -158,6 +158,9 @@ if(action==='prepare') {
         const pendingAt=Date.now();
         assert.ok(!existsSync(join(workspace,phase+'-child.txt')),'The delayed artifact must not already exist while the parent yields');
         observed.pendingAt=pendingAt;
+        const resident=JSON.parse(cli('agents','ps','--json')).runtimes.find(row=>row.id===receipt.agent_id);
+        assert.ok(resident?.pid,'The delegated runtime must have an observable process ID');
+        observed.runtimePid=resident.pid;
         // This is a behavioral assertion, not a token billing measurement.
         const report={ok:true,phase,agentId:receipt.agent_id,threadId:receipt.thread_id,
           pendingObserved:true,parentTurnEndedBeforeCompletion:true,version:record().version};
@@ -184,6 +187,13 @@ if(action==='prepare') {
       assert.ok(Number.isFinite(observed.pendingAt),'The test must observe the pending task before accepting completion');
       if(phase==='first')assert.deepEqual(newIds,[receipt.agent_id],'Only the requested agent may have been created');
       assert.ok(!tasks.some(active),'Acceptance must not leave another task running');
+      const runtimeState=JSON.parse(cli('agents','ps','--json'));
+      if(runtimeState.runtimes.some(row=>row.id===receipt.agent_id))continue;
+      let runtimeAlive=true;
+      try {process.kill(observed.runtimePid,0);} catch(error) {if(error.code==='ESRCH')runtimeAlive=false;else throw error;}
+      if(runtimeAlive)continue;
+      assert.equal(JSON.parse(cli('agents','show',receipt.agent_id,'--json')).status,'completed');
+      assert.equal(JSON.parse(cli('agents','result',receipt.agent_id,'--json')).answer,result.answer);
       assert.ok(idle>=0&&idle<delivery,'The parent must end its first turn before receiving completion');
       const delivered=items.filter(item=>item.type==='response_item'&&item.payload?.name==='dsh_completion');
       assert.equal(delivered.length,1,'One native callback is required for this delegated task');
@@ -208,7 +218,8 @@ if(action==='prepare') {
       const report={ok:true,phase,host:process.env.COMPUTERNAME,node:process.version,version:record().version,
         agentId:receipt.agent_id,threadId:receipt.thread_id,callback:receipt.status,callbackTurnId:callbackTurn,nativeCallbackItems:delivered.length,
         delegatedOnce:true,actualAgentIds:ids,childArtifactVerified:true,artifactPresentByDelivery:true,artifactMtime,resultMtime,
-        parentReadArtifact:true,parentReadOutputVerified:true,readCallId:readPair.call.payload.call_id,parentCompleted:true};
+        parentReadArtifact:true,parentReadOutputVerified:true,readCallId:readPair.call.payload.call_id,parentCompleted:true,
+        runtimeExited:true,conversationRetained:true,cliManagementVerified:true};
       write(phase,report);console.log(JSON.stringify(report));process.exit(0);
     }
     await delay(1000);

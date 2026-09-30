@@ -85,7 +85,16 @@ Codex 通过 MCP 启动子代理，配套 skill 随后为这次任务注册后�
 
 DSH 将子代理按工作区归档。每个工作区有一条名为“Claude Code / Codex 子代理”的会话，打开其中的子代理列表，就能查看各项任务的对话和工具执行记录。
 
-网页显示已保存的记录，可能晚于实际执行进度，运行标识也不反映这些代理的实时状态。需要当前进度时，让 Codex 通过 MCP 查询；追问和中断同样由桥接器处理。
+网页显示已保存的记录，可能晚于实际执行进度，运行标识也不反映这些代理的实时状态。可以让 Codex 查询，也可以直接从终端管理：
+
+```sh
+npx -y dsh-subagent-mcp@latest agents list
+npx -y dsh-subagent-mcp@latest agents ps
+npx -y dsh-subagent-mcp@latest agents result AGENT_ID
+npx -y dsh-subagent-mcp@latest agents followup AGENT_ID --task "继续检查第一个问题"
+```
+
+任务完成后自动保存会话并释放子进程；追问时恢复同一段对话。`agents --help` 可查看中断、关闭和清理空闲运行时等命令，详细说明见[运维指南](docs/operations.md#inspect-dsh-work)。
 
 已有的普通 DSH Web 会话可以通过 `dsh_attach` 接入，继续原来的工作。具体用法见[使用指南](docs/usage.md)。
 
@@ -96,7 +105,7 @@ DSH 将子代理按工作区归档。每个工作区有一条名为“Claude Cod
 | [安装](docs/setup.md) | 凭据、持久安装、升级和旧会话迁移 |
 | [使用](docs/usage.md) | 工具、回调、追问、进度、外部会话和上下文预算 |
 | [架构](docs/architecture.md) | 进程归属、权限和生命周期 |
-| [运维](docs/operations.md) | 服务管理、结果检查和网页历史 |
+| [运维](docs/operations.md) | 服务管理、子代理命令行管理、结果检查和网页历史 |
 | [回调验证](docs/codex-callback-validation.md) | 结果回传、空闲等待与父代理验收 |
 | [更新日志](CHANGELOG.md) | 版本变化和兼容性说明 |
 

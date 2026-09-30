@@ -21,6 +21,7 @@ Usage:
   dsh-subagent-mcp status [--json]
   dsh-subagent-mcp start | stop [--force] | restart
   dsh-subagent-mcp logs
+  dsh-subagent-mcp agents [COMMAND]         Manage subagents; use agents --help
   dsh-subagent-mcp upgrade
   dsh-subagent-mcp uninstall [--purge]
   dsh-subagent-mcp codex [Codex arguments]  Explicitly open Codex using the installed integration
@@ -38,6 +39,7 @@ Uninstall preserves history and credentials unless --purge is specified.
 Upgrades and ordinary stops refuse to interrupt active tasks.`);
   else if (command === undefined) await (await import('./setup.mjs')).onboard();
   else if (command === 'setup') await (await import('./setup.mjs')).setup(args);
+  else if (command === 'agents') await (await import('./agents-cli.mjs')).agentsCli(args);
   else if (command === 'configure') await (await import('./accounts.mjs')).configure(args);
   else if (command === 'login') await (await import('./accounts.mjs')).login(args);
   else if (command === 'doctor') await (await import('./doctor.mjs')).doctor(flags({json: {type: 'boolean'}}));
