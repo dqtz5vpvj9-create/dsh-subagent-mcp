@@ -7,6 +7,7 @@
 - Keep the endpoint stable across service restarts. Legacy stdio clients use a lightweight forwarding module and exit on EOF or disconnection.
 - Save and release settled DSH runtimes automatically; restore their conversation for follow-ups. Bound stalled shutdown and checkpoint waits.
 - Add `agents` command-line management and expose runtime, connection, request and observer counts in service diagnostics.
+- Start the same shared service directly when a Windows SSH login cannot run its interactive scheduled task; retain the task for future desktop logins.
 - Exercise 100 connections, 20 idle clients, cancellation, EOF and service restart in Windows, Linux and macOS CI.
 
 ## 0.7.0

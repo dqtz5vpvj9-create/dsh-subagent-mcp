@@ -41,6 +41,10 @@ interrupt all active DSH work owned by the bridge.
 Closing an MCP connection leaves DSH work running. The service commands manage
 DSH; they do not manage your Codex conversations.
 
+On Windows, the login task remains registered for desktop sign-ins. If Windows
+cannot run that task from an SSH-only login, `start` launches the same shared
+service directly. Both launch paths use the same installation and singleton lock.
+
 To remove the integration:
 
 ```sh

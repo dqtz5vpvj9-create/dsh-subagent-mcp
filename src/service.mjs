@@ -92,6 +92,13 @@ export async function statusService() {
 
 async function startBackground(record) {
   privateDirectory(locations().state);
+  if (process.platform === 'win32') {
+    const script = fileURLToPath(new URL('../scripts/start-windows-service.ps1', import.meta.url));
+    const command = [record.node, join(record.root, 'src/service-runner.mjs'), '--config', installationFile(), '--daemon'];
+    runCommand(['powershell.exe'], ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script,
+      '-CommandLine', command.map(windowsQuote).join(' '), '-WorkingDirectory', record.root], {stdio: 'pipe'});
+    return;
+  }
   const log = openSync(join(locations().state, 'daemon.log'), 'a', 0o600);
   const child = spawn(record.node, [join(record.root, 'src/service-runner.mjs'), '--config', installationFile(), '--daemon'],
     {detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env});
