@@ -24,14 +24,22 @@ if(process.argv.includes('--patch'))createInterface({input:process.stdin}).on('l
  const request=JSON.parse(line);console.log(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{}}));
  if(request.method==='shutdown')process.exit(0);
 });\n`);
-  writeFileSync(codex, `import {readFileSync,writeFileSync,existsSync,unlinkSync} from 'node:fs';
+  writeFileSync(codex, `import {readFileSync,writeFileSync,existsSync,unlinkSync,mkdirSync} from 'node:fs';
+import {join} from 'node:path';
 import {WebSocketServer} from ${JSON.stringify(import.meta.resolve('ws'))};
 const a=process.argv.slice(2), path=${JSON.stringify(codexState)}, fail=${JSON.stringify(failOnce)};
 if(a[0]==='--version')console.log('codex-cli 0.158.0');
 else if(a[0]==='mcp'&&a[1]==='add'){
  if(existsSync(fail)){unlinkSync(fail);console.error('registration fixture failure');process.exit(2);}
- const i=a.indexOf('--');writeFileSync(path,JSON.stringify({transport:{command:a[i+1],args:a.slice(i+2)}}));
-}else if(a[0]==='mcp'&&a[1]==='list')console.log(JSON.stringify(existsSync(path)?[{name:'dsh_subagent',...JSON.parse(readFileSync(path,'utf8'))}]:[]));
+ const url=a[a.indexOf('--url')+1];
+ mkdirSync(process.env.CODEX_HOME,{recursive:true});
+ writeFileSync(join(process.env.CODEX_HOME,'config.toml'),'[mcp_servers.dsh_subagent]\\nurl = '+JSON.stringify(url)+'\\n');
+ writeFileSync(path,JSON.stringify({transport:{type:'streamable_http',url}}));
+}else if(a[0]==='mcp'&&a[1]==='list'){
+ const row=existsSync(path)?JSON.parse(readFileSync(path,'utf8')):null;
+ if(row){const text=readFileSync(join(process.env.CODEX_HOME,'config.toml'),'utf8');const auth=/Authorization = (".*")/.exec(text);if(auth)row.transport.http_headers={Authorization:JSON.parse(auth[1])};}
+ console.log(JSON.stringify(row?[{name:'dsh_subagent',...row}]:[]));
+}
 else if(a[0]==='mcp'&&a[1]==='remove')unlinkSync(path);
 else if(a[0]==='app-server'&&a[1]==='daemon'&&a[2]==='version')console.log(JSON.stringify({status:'running',managedCodexVersion:'0.158.0'}));
 else if(a[0]==='app-server'){

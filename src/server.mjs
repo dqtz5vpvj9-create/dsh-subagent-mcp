@@ -119,7 +119,7 @@ export async function main(){
             .catch(error=>socket.end(JSON.stringify({error:error.message})+'\n'));
           socket.resume();
         }
-        else if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),runtimes:[...manager.live].map(([id,rt])=>({id,pid:rt.child?.pid,status:manager.get(id).status})),connections:connections.size,http:http?.stats(),observers:manager.eventNames().filter(name=>String(name).startsWith('state:')).reduce((sum,name)=>sum+manager.listenerCount(name),0),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
+        else if(first.bridge_control==='status')socket.end(JSON.stringify(http?{pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),runtimes:[...manager.live].map(([id,rt])=>({id,pid:rt.child?.pid,status:manager.get(id).status})),connections:connections.size,http:http.stats(),observers:manager.eventNames().filter(name=>String(name).startsWith('state:')).reduce((sum,name)=>sum+manager.listenerCount(name),0),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version}:{error:'The HTTP MCP listener is still starting.'})+'\n');
         else if(first.bridge_control==='stop') {
           if(active.length&&!first.force)socket.end(JSON.stringify({error:'Active DSH tasks are running. Finish them first, or use stop --force to interrupt them.'})+'\n');
           else socket.end('{"stopping":true}\n',()=>{stop().catch(console.error);});
