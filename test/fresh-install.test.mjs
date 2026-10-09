@@ -48,7 +48,8 @@ test('fresh setup installs real dependencies, registers Codex, and runs real DSH
     console.log('Fresh installation verified on', process.platform, 'with', run(codex, [...prefix, '--version']).trim());
     run(process.execPath, [installed, 'uninstall']);
     assert.ok(!existsSync(join(env.DSH_SUBAGENT_CONFIG, 'installation.json')));
-    assert.ok(!JSON.parse(run(codex,[...prefix,'mcp','list','--json'])).some(server=>server.name==='dsh_subagent'));
+    // Uninstall can also remove the managed Codex executable.
+    assert.ok(!/^\[mcp_servers\.(?:dsh_subagent|"dsh_subagent")\]/m.test(readFileSync(join(env.CODEX_HOME,'config.toml'),'utf8')));
   } catch (error) {
     const log = join(env.DSH_SUBAGENT_STATE, 'daemon.log');
     if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

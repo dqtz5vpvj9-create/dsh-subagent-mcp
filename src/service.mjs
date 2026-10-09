@@ -90,6 +90,16 @@ export async function statusService() {
   catch (error) { return {running: false, error: error.message}; }
 }
 
+async function startBackground(record) {
+  privateDirectory(locations().state);
+  const log = openSync(join(locations().state, 'daemon.log'), 'a', 0o600);
+  const child = spawn(record.node, [join(record.root, 'src/service-runner.mjs'), '--config', installationFile(), '--daemon'],
+    {detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env});
+  closeSync(log);
+  await new Promise((resolve, reject) => {child.once('spawn', resolve); child.once('error', reject);});
+  child.unref();
+}
+
 export async function startService(record = installation()) {
   if (!record) throw new Error('Not installed. Run dsh-subagent-mcp setup first.');
   const paused = join(locations().state, 'paused');
@@ -98,18 +108,20 @@ export async function startService(record = installation()) {
   if (record.backend === 'systemd') runCommand(['systemctl'], ['--user', 'start', unit]);
   else if (record.backend === 'launchd') runCommand(['launchctl'], ['kickstart', `gui/${process.getuid()}/${label}`]);
   else if (record.backend === 'task-scheduler') runCommand(['schtasks.exe'], ['/Run', '/TN', label]);
-  else {
-    privateDirectory(locations().state);
-    const log = openSync(join(locations().state, 'daemon.log'), 'a', 0o600);
-    const child = spawn(record.node, [join(record.root, 'src/service-runner.mjs'), '--config', installationFile(), '--daemon'],
-      {detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env});
-    closeSync(log);
-    await new Promise((resolve, reject) => {child.once('spawn', resolve); child.once('error', reject);});
-    child.unref();
-  }
+  else await startBackground(record);
   for (let attempt = 0; attempt < 100; attempt++) {
     if ((await statusService()).running) return;
     await delay(150);
+  }
+  // InteractiveToken tasks cannot run in an SSH-only Windows login (0x80070520).
+  // Keep the login task, but start this same singleton directly for this login.
+  if (record.backend === 'task-scheduler') {
+    console.warn('The Windows login task did not start; starting the shared service directly.');
+    await startBackground(record);
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if ((await statusService()).running) return;
+      await delay(150);
+    }
   }
   throw new Error('The service did not become ready. Run dsh-subagent-mcp logs and doctor.');
 }
