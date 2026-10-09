@@ -8,7 +8,7 @@ import {temporaryDirectory} from '../src/platform.mjs';
 import {codexHttpAcceptance} from './e2e/codex-http.mjs';
 
 test('fresh setup installs real dependencies, registers Codex, and runs real DSH presets',
-  {skip: process.env.DSH_FRESH_INSTALL_TEST !== '1', timeout: 480000}, async () => {
+  {skip: process.env.DSH_FRESH_INSTALL_TEST !== '1', timeout: 1200000}, async () => {
   const root = mkdtempSync(join(temporaryDirectory(), 'dsh-fresh-'));
   const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
   const env = {...process.env, DSH_SUBAGENT_DATA: join(root, 'data'), DSH_SUBAGENT_CONFIG: join(root, 'config'),
@@ -23,7 +23,9 @@ test('fresh setup installs real dependencies, registers Codex, and runs real DSH
   };
   let installed;
   try {
-    run(process.execPath, [cli, 'setup', '--service', 'background'], {}, {stdio: 'inherit'});
+    // A cold Windows runner installs hundreds of real dependency packages.
+    // Give that download its own budget; tool calls keep their shorter limits.
+    run(process.execPath, [cli, 'setup', '--service', 'background'], {}, {stdio: 'inherit', timeout: 900000});
     const record = JSON.parse(readFileSync(join(env.DSH_SUBAGENT_CONFIG, 'installation.json'), 'utf8'));
     installed = join(record.root, 'src/cli.mjs');
     console.log('Checking the installed commands and Codex registration…');
