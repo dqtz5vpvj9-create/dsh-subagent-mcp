@@ -75,6 +75,7 @@ Upgrades and ordinary stops refuse to interrupt active tasks.`);
     flags({});
     if (process.platform !== 'linux') throw new Error('Legacy session adoption requires Linux flock. Normal DSH sessions work on all supported platforms.');
     await (await import('./adopt.mjs')).adopt();
-  } else if (command === 'mcp' || command === '--daemon') await (await import('./server.mjs')).main();
+  } else if (command === 'mcp') await (await import('./stdio-proxy.mjs')).stdioProxy();
+  else if (command === '--daemon') await (await import('./server.mjs')).main();
   else throw new Error('Unknown command: ' + command + '. Run dsh-subagent-mcp --help.');
 } catch (error) {console.error(error.message); process.exitCode = 1;}

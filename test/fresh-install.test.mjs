@@ -5,9 +5,10 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {temporaryDirectory} from '../src/platform.mjs';
+import {codexHttpAcceptance} from './e2e/codex-http.mjs';
 
 test('fresh setup installs real dependencies, registers Codex, and runs real DSH presets',
-  {skip: process.env.DSH_FRESH_INSTALL_TEST !== '1', timeout: 480000}, () => {
+  {skip: process.env.DSH_FRESH_INSTALL_TEST !== '1', timeout: 480000}, async () => {
   const root = mkdtempSync(join(temporaryDirectory(), 'dsh-fresh-'));
   const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
   const env = {...process.env, DSH_SUBAGENT_DATA: join(root, 'data'), DSH_SUBAGENT_CONFIG: join(root, 'config'),
@@ -31,7 +32,10 @@ test('fresh setup installs real dependencies, registers Codex, and runs real DSH
     assert.match(run(process.execPath, [installed, 'dsh', '--version']), /0\.1\./);
     const [codex, ...prefix] = record.codex;
     const registration = JSON.parse(run(codex, [...prefix, 'mcp', 'get', 'dsh_subagent', '--json']));
-    assert.ok(registration.transport.args.includes(installed));
+    assert.equal(registration.transport.type,'streamable_http');
+    assert.match(registration.transport.url,/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    assert.ok(registration.transport.http_headers.Authorization.startsWith('Bearer '));
+    await codexHttpAcceptance(record,env,root);
     const schemas = join(root, 'schemas');
     console.log('Checking the installed Codex callback protocol…');
     run(codex, [...prefix, 'app-server', 'generate-json-schema', '--experimental', '--out', schemas]);
@@ -44,6 +48,7 @@ test('fresh setup installs real dependencies, registers Codex, and runs real DSH
     console.log('Fresh installation verified on', process.platform, 'with', run(codex, [...prefix, '--version']).trim());
     run(process.execPath, [installed, 'uninstall']);
     assert.ok(!existsSync(join(env.DSH_SUBAGENT_CONFIG, 'installation.json')));
+    assert.ok(!JSON.parse(run(codex,[...prefix,'mcp','list','--json'])).some(server=>server.name==='dsh_subagent'));
   } catch (error) {
     const log = join(env.DSH_SUBAGENT_STATE, 'daemon.log');
     if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

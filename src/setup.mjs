@@ -6,7 +6,7 @@ import {parseArgs} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {projectRoot, resolveDshCli} from './config.mjs';
-import {locations, installation, installationFile, privateDirectory, readableProgramDirectory, writeJson} from './platform.mjs';
+import {locations, installation, installationFile, privateDirectory, readableProgramDirectory, writeJson, readJson} from './platform.mjs';
 import {commandSpec, packageEntry, runCommand} from './commands.mjs';
 import {installPackage} from './install-package.mjs';
 import {backendDefault, installService, startService, stopService, statusService, removeService, systemdQuote, nativeServiceConflict} from './service.mjs';
@@ -79,8 +79,16 @@ function ensureDependencies(installMissing) {
 }
 
 export function registerCodex(record) {
-  const env = ['DSH_SUBAGENT_STATE=' + record.state, 'DSH_SUBAGENT_CONFIG=' + locations().config];
-  runCommand(record.codex, ['mcp', 'add', 'dsh_subagent', ...env.flatMap(value => ['--env', value]), '--', record.node, join(record.root, 'src/cli.mjs'), 'mcp']);
+  const endpoint=readJson(join(record.state,'http.json'));
+  if(!endpoint)throw new Error('The shared MCP endpoint is not ready.');
+  runCommand(record.codex, ['mcp', 'add', 'dsh_subagent', '--url', `http://127.0.0.1:${endpoint.port}/mcp`]);
+  // Codex owns TOML serialization. Add the credential only in the newly written
+  // table, without placing it in command arguments or printing it to the console.
+  const file=join(locations().codex,'config.toml');
+  const text=readFileSync(file,'utf8');
+  const table=/^(\[mcp_servers\.(?:dsh_subagent|"dsh_subagent")\][^\r\n]*\r?\n)/m;
+  if(!table.test(text))throw new Error('Codex did not write the expected MCP configuration table.');
+  writeFileSync(file,text.replace(table,(_,header)=>header+`http_headers = { Authorization = ${JSON.stringify('Bearer '+endpoint.token)} }\n`),{mode:0o600});
 }
 
 function codexRegistration(codex) {
@@ -178,7 +186,9 @@ export async function setup(argv, {source = false, launching = false} = {}) {
     await (await import('./codex-host.mjs')).prepareWindowsCodexDaemon(dependencies.codex);
   }
   const oldRegistration = codexRegistration(dependencies.codex);
-  if (oldRegistration?.transport?.url) throw new Error('Codex already has a remote MCP server named dsh_subagent. Rename it before installing this local bridge.');
+  const oldEndpoint=readJson(join(paths.state,'http.json'));
+  if (oldRegistration?.transport?.url && oldRegistration.transport.url!==`http://127.0.0.1:${oldEndpoint?.port}/mcp`)
+    throw new Error('Codex already has a remote MCP server named dsh_subagent. Rename it before installing this local bridge.');
   const oldSkill = ownsSkill() ? realpathSync(skillTarget()) : null;
   if (args['capture-key']) captureProvider();
   const profile = join(process.env.DSH_HOME || join((await import('node:os')).homedir(), '.dsh'), 'profiles/codex-subagent/package.json');
@@ -232,8 +242,11 @@ export async function setup(argv, {source = false, launching = false} = {}) {
     }
     if (registered) {
       if (oldRegistration) {
-        const {command, args = [], env = {}} = oldRegistration.transport;
-        runCommand(dependencies.codex, ['mcp', 'add', 'dsh_subagent', ...Object.entries(env).flatMap(([key, value]) => ['--env', key + '=' + value]), '--', command, ...args]);
+        if(oldRegistration.transport.url)registerCodex(previous);
+        else {
+          const {command, args = [], env = {}} = oldRegistration.transport;
+          runCommand(dependencies.codex, ['mcp', 'add', 'dsh_subagent', ...Object.entries(env).flatMap(([key, value]) => ['--env', key + '=' + value]), '--', command, ...args]);
+        }
       } else runCommand(dependencies.codex, ['mcp', 'remove', 'dsh_subagent']);
     }
     if (skillChanged) {
@@ -255,10 +268,13 @@ export async function uninstall({purge = false} = {}) {
   const record = installation();
   if (!record) {console.log('No managed installation found.'); return;}
   const registered = codexRegistration(record.codex);
+  const endpoint=readJson(join(record.state,'http.json'));
   const status = await statusService();
   if (status.running && status.active?.length) throw new Error('Active DSH tasks are running. Finish or interrupt them before uninstalling.');
   await removeService(record);
-  if (registered?.transport?.args?.some(arg => arg === join(record.root, 'src/cli.mjs'))) runCommand(record.codex, ['mcp', 'remove', 'dsh_subagent']);
+  if (registered?.transport?.args?.some(arg => arg === join(record.root, 'src/cli.mjs')) ||
+      (endpoint&&registered?.transport?.url===`http://127.0.0.1:${endpoint.port}/mcp`))
+    runCommand(record.codex, ['mcp', 'remove', 'dsh_subagent']);
   if (ownsSkill()) unlinkSync(skillTarget());
   unlinkSync(installationFile());
   for (const name of ['versions', 'dependencies']) rmSync(join(locations().data, name), {recursive: true, force: true});

@@ -3,9 +3,8 @@
 
 ```mermaid
 flowchart LR
-    C[Codex + companion skill] --> P[MCP stdio proxy]
-    P --> S[Private local IPC]
-    S --> M[Persistent manager]
+    C[Codex + companion skill] --> S[Authenticated loopback HTTP MCP]
+    S --> M[Shared persistent manager]
     M --> A[DSH session A]
     M --> B[DSH session B]
     M --> DB[(Agent metadata + progress)]
@@ -13,10 +12,18 @@ flowchart LR
     B --> H
 ```
 
-Each agent owns a DSH process and working directory. The bridge uses DSH's SDK JSON-RPC interface, plus a separate plugin exposing cancellation, checkpointing, and persisted-session resume. The plugin uses DSH's existing agent registry and cancellation mechanism.
+Each active agent owns a DSH process and working directory. Settled agents checkpoint their history and release the process; follow-ups restore the same session. The bridge uses DSH's SDK JSON-RPC interface, plus a separate plugin exposing cancellation, checkpointing, and persisted-session resume.
+
+Codex connects directly to one authenticated HTTP MCP endpoint on loopback. Idle
+chats own no Node proxy or MCP server object. Each request releases its server
+and listeners when its response finishes or the client disconnects. An unbounded
+wait retains only that pending request; cancellation detaches its observer without
+stopping the DSH task. Endpoint credentials and the port survive service restarts.
 
 Local IPC is a private Unix socket on Linux and macOS, or authenticated loopback
-TCP on Windows. Native per-user services keep the manager available; a detached
+TCP on Windows. It serves CLI administration and legacy stdio clients. The stdio
+entrypoint loads only forwarding code and exits when its input or connection closes.
+Native per-user services keep the manager available; a detached
 background process is used when login services are unavailable. Installation,
 configuration and task state follow each platform's user-directory conventions.
 

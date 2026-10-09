@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- Connect Codex directly to one authenticated loopback HTTP MCP service. Restoring idle chats no longer starts a Node proxy for each chat.
+- Release per-request MCP objects and disconnected wait observers; preserve accepted background tasks independently of client connections.
+- Keep the endpoint stable across service restarts. Legacy stdio clients use a lightweight forwarding module and exit on EOF or disconnection.
+- Save and release settled DSH runtimes automatically; restore their conversation for follow-ups. Bound stalled shutdown and checkpoint waits.
+- Add `agents` command-line management and expose runtime, connection, request and observer counts in service diagnostics.
+- Exercise 100 connections, 20 idle clients, cancellation, EOF and service restart in Windows, Linux and macOS CI.
+
 ## 0.7.0
 
 - The default command installs the integration and returns to the terminal. Repeating it checks the existing installation; it never opens a coding session.

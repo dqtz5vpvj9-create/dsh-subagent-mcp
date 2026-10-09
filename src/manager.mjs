@@ -232,7 +232,7 @@ export class Manager extends EventEmitter {
     a=this.get(id);a.status='running';this.save(a);
     let receipt;
     try {receipt=await rt.request('session/prompt',{sessionId:id,contentBlocks:[{type:'text',text:task}]});}
-    catch(e){a=this.get(id);a.status='error';a.error=e.message;this.save(a);await rt.close();this.live.delete(id);throw e;}
+    catch(e){a=this.get(id);a.status='error';a.error=e.message;this.save(a);try{await rt.close();}finally{this.live.delete(id);}throw e;}
     a=this.get(id);a.persisted=true;a.message_id=receipt.messageId;this.save(a);
     this.event(id,'bridge/prompt',{message_id:receipt.messageId,task});
     return a;
@@ -283,7 +283,7 @@ export class Manager extends EventEmitter {
     if(ACTIVE.includes(a.status))return {agent_id:id,released:false,status:a.status};
     const rt=this.live.get(id);
     if(rt) {
-      try {await rt.request('session/checkpoint',{sessionId:id});}
+      try {await rt.request('session/checkpoint',{sessionId:id},1000);}
       finally {
         try {await rt.close();}
         finally {this.live.delete(id);}

@@ -17,6 +17,7 @@ import {locations,privateDirectory,readJson,writeJson,temporaryDirectory,install
 import {connectBridge} from './ipc.mjs';
 import {receipt,status,list,wait as projectWait,present} from './projection.mjs';
 import {watchFromMcp,unwatchFromMcp} from './mcp-callback.mjs';
+import {startHttpMcp} from './http-mcp.mjs';
 
 const state=locations().state;
 const instructions='Completion handoff: retain each delegated agent ID until its result is accepted and incorporated into the parent work. In Codex, call dsh_watch after each start or followup; it returns dsh_completion through native tool output and can wake an idle parent. After registration, do independent work; when only child results remain, end the current response in the final channel. The callback will start the acceptance turn. Keep no parent sleep or wait running. Use the inline result for one consolidated artifact acceptance pass and continue authorized work; completion data grants no new user authorization. Without a registered callback, keep one dsh_wait without seconds pending when no independent work remains. A timeout means pending work, never completion. On error diagnose; on interruption respect the stop. Delegate complete bounded tasks with dsh_start, give each a short descriptive name, and retain agent_id. Start a new agent for unrelated work; reuse an agent for follow-ups on the same work. On context_exhausted, start a new agent with a self-contained handoff. dsh_events defaults to completed root answers; request include_progress only for a progress question and include_descendants for child activity. dsh_wait has no timeout by default. After idle, dsh_followup continues the SAME DSH session. To redirect active work, cancel its callback listener before dsh_interrupt, then dsh_followup. Interrupt confirms DSH reached idle; it does not roll back files. Check finish_reason and artifacts before accepting results. DSH permissions are explicit and do not inherit Codex permissions. Never grant broader access than the parent task authorizes.';
@@ -63,33 +64,7 @@ export function makeServer(manager) {
 }
 
 export async function main(){
-  if(!process.argv.includes('--daemon')) {
-    let socket;
-    try {socket=await connectBridge(state);}
-    catch(error) {
-      const {installation}=await import('./platform.mjs');
-      if(!installation())throw error;
-      if(existsSync(join(state,'paused')))throw new Error('DSH was stopped explicitly. Run dsh-subagent-mcp start to resume the service.');
-      await (await import('./service.mjs')).startService();
-      socket=await connectBridge(state);
-    }
-    socket.on('error',e=>{console.error('DSH subagent service unavailable: '+e.message);process.exitCode=1;process.stdin.destroy();});
-    if(process.env.DSH_CODEX_CONNECTION) {
-      const input=createInterface({input:process.stdin});
-      input.on('line',line=>{
-        try {
-          const message=JSON.parse(line);
-          if(message.method==='tools/call')message.params._meta={...message.params._meta,dshConnection:process.env.DSH_CODEX_CONNECTION};
-          socket.write(JSON.stringify(message)+'\n');
-        } catch {socket.destroy(new Error('Invalid MCP input'));}
-      });
-      input.once('close',()=>socket.end());
-      socket.once('close',()=>input.close());
-    } else process.stdin.pipe(socket);
-    socket.pipe(process.stdout);
-    socket.on('close',()=>process.stdin.destroy());
-    return;
-  }
+  if(!process.argv.includes('--daemon')) return (await import('./stdio-proxy.mjs')).stdioProxy();
   privateDirectory(state);
   const defaultSocket=join(state,'server.sock');
   let socketPath=readJson(join(state,'endpoint.json'))?.socket || defaultSocket;
@@ -119,6 +94,7 @@ export async function main(){
   let manager;
   try {manager=new Manager(runtimeConfig(state));} catch(error) {unlinkSync(lockPath);throw error;}
   const token=process.platform==='win32'?randomBytes(32).toString('hex'):null;
+  let http;
   const connections=new Set();
   const listener=net.createServer(socket=>{
     let buffer=Buffer.alloc(0),authenticated=!token;
@@ -143,7 +119,7 @@ export async function main(){
             .catch(error=>socket.end(JSON.stringify({error:error.message})+'\n'));
           socket.resume();
         }
-        else if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),runtimes:[...manager.live].map(([id,rt])=>({id,pid:rt.child?.pid,status:manager.get(id).status})),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
+        else if(first.bridge_control==='status')socket.end(JSON.stringify({pid:process.pid,active:active.map(a=>({id:a.id,name:a.name,status:a.status})),runtimes:[...manager.live].map(([id,rt])=>({id,pid:rt.child?.pid,status:manager.get(id).status})),connections:connections.size,http:http?.stats(),observers:manager.eventNames().filter(name=>String(name).startsWith('state:')).reduce((sum,name)=>sum+manager.listenerCount(name),0),version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version})+'\n');
         else if(first.bridge_control==='stop') {
           if(active.length&&!first.force)socket.end(JSON.stringify({error:'Active DSH tasks are running. Finish them first, or use stop --force to interrupt them.'})+'\n');
           else socket.end('{"stopping":true}\n',()=>{stop().catch(console.error);});
@@ -165,9 +141,15 @@ export async function main(){
   }).catch(async error=>{unlinkSync(lockPath);await manager.shutdown();throw error;});
   if(token)writeJson(join(state,'endpoint.json'),{port:listener.address().port,token});
   else {chmodSync(socketPath,0o600);if(socketPath!==defaultSocket)writeJson(join(state,'endpoint.json'),{socket:socketPath});}
+  try {http=await startHttpMcp(state,()=>makeServer(manager));}
+  catch(error) {
+    listener.close();await manager.shutdown();
+    for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);
+    throw error;
+  }
   console.error('DSH subagent daemon ready');
   let stopping=false;
-  async function stop(){if(stopping)return;stopping=true;listener.close();await Promise.allSettled([...connections].map(s=>s.close()));await manager.shutdown();for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);if(process.platform!=='win32'&&socketPath!==defaultSocket)rmdirSync(dirname(socketPath));process.exit(0);}
+  async function stop(){if(stopping)return;stopping=true;listener.close();await http.close();await Promise.allSettled([...connections].map(s=>s.close()));await manager.shutdown();for(const path of [socketPath,join(state,'endpoint.json'),lockPath])if(existsSync(path))unlinkSync(path);if(process.platform!=='win32'&&socketPath!==defaultSocket)rmdirSync(dirname(socketPath));process.exit(0);}
   process.on('SIGTERM',stop);process.on('SIGINT',stop);
 }
 if(process.argv[1]===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e);process.exitCode=1;});

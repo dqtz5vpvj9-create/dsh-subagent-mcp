@@ -140,7 +140,11 @@ DSH's own conversations remain intact.
 
 - `setup --yes` skips interactive account prompts. `setup --capture-key` remains
   available when installation and credential capture belong in the same script.
-- `mcp` runs the MCP stdio transport. Clients must pass this subcommand explicitly;
+- Setup connects Codex directly to the shared authenticated loopback HTTP service;
+  it starts no per-chat proxy. The installer writes its credential privately to
+  Codex configuration. Existing chats retain cached tool configuration until their
+  MCP connections are reloaded or the chat is reopened.
+- `mcp` runs the compatibility stdio transport. Clients must pass this subcommand explicitly;
   the no-argument command installs the integration even when input is piped.
 - `setup --no-install-deps` requires preinstalled compatible DSH and Codex.
 - `setup --no-skill` preserves a separately managed skill. Conflicting custom

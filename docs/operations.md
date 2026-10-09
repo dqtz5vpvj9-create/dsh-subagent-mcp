@@ -13,6 +13,13 @@ runtime, MCP connection and account configuration; it does not make a model
 request. Run it inside Codex to also check completion delivery to the current
 conversation.
 
+`status --json` also reports resident runtime PIDs, legacy stdio connections,
+in-flight HTTP requests and completion observers. These return to zero after
+work and requests settle. The shared daemon remains available for later tasks.
+Codex uses the shared HTTP endpoint directly, so opening or restoring more chats
+does not create more MCP proxy processes. Older chats may retain their original
+stdio configuration until their MCP connections are reloaded or reopened.
+
 Bridge state follows the platform locations in the [installation guide](setup.md).
 Full conversation history belongs to DSH's configured home. Saved provider
 settings live in `provider.json` under the bridge configuration directory. Use

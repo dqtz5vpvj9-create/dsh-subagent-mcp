@@ -27,3 +27,5 @@ jobs:
         run: node --test test/fresh-install.test.mjs
         env:
           DSH_FRESH_INSTALL_TEST: '1'
+      - name: Verify 100 MCP reconnects and idle resource reclamation
+        run: node --test test/e2e/lifecycle.test.mjs

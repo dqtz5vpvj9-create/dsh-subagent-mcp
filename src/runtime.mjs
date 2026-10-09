@@ -45,11 +45,14 @@ export class Runtime extends EventEmitter {
       this.child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');
     });
   }
-  async close() {
+  close() {
+    return this.closing??=(this.closeRuntime());
+  }
+  async closeRuntime() {
     if (this.exited) return;
-    try {await this.request('shutdown', undefined, 10000);} finally {
+    try {await this.request('shutdown', undefined, 2000);} finally {
       this.child.stdin.end();
-      const timer=setTimeout(()=>this.child.kill('SIGKILL'),10000);
+      const timer=setTimeout(()=>this.child.kill('SIGKILL'),2000);
       await this.exitPromise;clearTimeout(timer);
     }
   }
